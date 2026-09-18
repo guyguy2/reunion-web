@@ -15,6 +15,15 @@ const MODEL = 'https://storage.googleapis.com/mediapipe-models/face_detector/bla
 const WINDOWS = [180, 300, 480]
 const OVERLAP = 0.45
 
+/** Lets the page repaint between batches. A message channel is used because browsers throttle timers in background tabs. */
+function breathe(): Promise<void> {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel()
+    channel.port1.onmessage = () => resolve()
+    channel.port2.postMessage(null)
+  })
+}
+
 function overlap(a: Box, b: Box): number {
   const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
   const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
@@ -30,9 +39,8 @@ export async function detectFaces(imageUrl: string, existing: Box[], onProgress:
     runningMode: 'IMAGE',
     minDetectionConfidence: 0.6,
   })
-  const image = new Image()
-  image.src = imageUrl
-  await image.decode()
+  // createImageBitmap decodes off the main thread and, unlike <img>.decode(), also works in a background tab.
+  const image = await createImageBitmap(await (await fetch(imageUrl)).blob())
 
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!
@@ -63,12 +71,13 @@ export async function detectFaces(imageUrl: string, existing: Box[], onProgress:
         }
         if (++done % 25 === 0) {
           onProgress(done / total)
-          await new Promise((resolve) => setTimeout(resolve))
+          await breathe()
         }
       }
     }
   }
   detector.close()
+  image.close()
 
   const kept: Box[] = []
   for (const candidate of found.sort((a, b) => b.score - a.score)) {

@@ -20,6 +20,7 @@ import { MAX_UPLOAD_BYTES, cropFace, readImageField, removeUpload, saveUpload } 
 import { getPerson, insertPerson, listPeople, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { getScene, listScenes, serializeTag } from './scenes.ts'
 import { adminRoutes } from './admin.ts'
+import { albumPhotos } from './album.ts'
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -114,6 +115,8 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
   })
 
   app.get('/api/event', (c) => c.json({ ...loadEvent(), visits: getCounter(db, 'visits') }))
+
+  app.get('/api/memories/photos', async (c) => c.json(await albumPhotos(process.env.GOOGLE_PHOTOS_ALBUM_URL ?? '')))
 
   app.get('/api/scenes', (c) => c.json(listScenes(db)))
 

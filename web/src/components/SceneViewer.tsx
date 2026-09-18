@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import OpenSeadragon from 'openseadragon'
-import type { Scene, Tag } from '../api.ts'
+import { faceUrl, type Scene, type Tag } from '../api.ts'
 
 interface Props {
   scene: Scene
-  /** Tooltip text per tag; unidentified faces get a prompt instead. */
+  /** Name shown in the hover bubble; unidentified faces get a prompt instead. */
   labelFor: (tag: Tag) => string | null
   selectedTagId: number | null
   myPersonId: number | null
@@ -63,11 +63,25 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
     for (const tag of scene.tags) {
       const el = document.createElement('div')
       el.className = `face-tag${tag.personId == null ? ' unknown' : ''}${tag.personId != null && tag.personId === myPersonId ? ' mine' : ''}`
-      const tip = document.createElement('span')
-      tip.className = 'tip'
-      tip.dir = 'auto'
-      tip.textContent = labelFor(tag) ?? 'Who is this?'
-      el.appendChild(tip)
+      // Hover bubble: a magnified face, the name, and what a click will do.
+      const name = labelFor(tag)
+      const bubble = document.createElement('div')
+      bubble.className = 'bubble'
+      const face = document.createElement('img')
+      face.alt = ''
+      const title = document.createElement('strong')
+      title.dir = 'auto'
+      title.textContent = name ?? 'Who dis?'
+      const hint = document.createElement('span')
+      hint.textContent = name ? 'Click for profile' : 'Click to add a name'
+      bubble.append(face, title, hint)
+      el.appendChild(bubble)
+      el.addEventListener('mouseenter', () => {
+        // Load the crop only when it is needed, and flip the bubble under the face near the top edge.
+        if (!face.src) face.src = faceUrl(tag)
+        const top = el.getBoundingClientRect().top - host.current!.getBoundingClientRect().top
+        bubble.classList.toggle('below', top < 210)
+      })
       osd.addOverlay({ element: el, location: osd.viewport.imageToViewportRectangle(tag.x, tag.y, tag.w, tag.h) })
       // MouseTracker tells a tap apart from the end of a drag, which a plain click listener cannot.
       trackers.current.push(

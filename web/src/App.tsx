@@ -51,6 +51,12 @@ function Shell() {
             </NavLink>
           ))}
         </nav>
+        <button
+          className="ms-auto cursor-pointer text-sm font-bold underline decoration-2 underline-offset-2 opacity-70 hover:opacity-100"
+          onClick={() => api('/api/logout', { method: 'POST' }).then(() => location.assign('/'))}
+        >
+          Log out
+        </button>
       </header>
 
       <main className="relative min-h-0 flex-1 overflow-y-auto pb-14 sm:pb-0">
