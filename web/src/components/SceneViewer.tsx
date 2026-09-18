@@ -106,8 +106,8 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
     const osd = viewer.current
     const tag = focus && scene.tags.find((t) => t.id === focus.tagId)
     if (!osd || !opened || !tag) return
-    // Frame the face with room around it so neighbors give context.
-    const rect = osd.viewport.imageToViewportRectangle(tag.x - tag.w * 1.75, tag.y - tag.h * 1.25, tag.w * 4.5, tag.h * 3.5)
+    // Frame the portrait with a few neighbors around it for context (and so small faces are not blown up too far).
+    const rect = osd.viewport.imageToViewportRectangle(tag.x - tag.w * 3.5, tag.y - tag.h * 2, tag.w * 8, tag.h * 5)
     osd.viewport.fitBounds(rect)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.tagId, focus?.nonce, opened])

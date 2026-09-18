@@ -84,11 +84,11 @@ export async function detectFaces(imageUrl: string, existing: Box[], onProgress:
     if ([...kept, ...existing].some((box) => overlap(box, candidate) > 0.35)) continue
     kept.push(candidate)
   }
-  // Detections hug the face; grow them to include hair and chin so the crop looks like a portrait.
+  // Detections hug the face; grow them to cover hair and shoulders, roughly the whole yearbook portrait.
   return kept.map(({ x, y, w, h }) => ({
-    x: Math.max(0, x - w * 0.12),
-    y: Math.max(0, y - h * 0.32),
-    w: w * 1.24,
-    h: h * 1.5,
+    x: Math.max(0, x - w * 0.3),
+    y: Math.max(0, y - h * 0.45),
+    w: w * 1.6,
+    h: h * 2,
   }))
 }

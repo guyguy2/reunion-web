@@ -110,10 +110,9 @@ body {
   background-color: rgb(250 204 21 / 0.18);
   outline: none;
 }
-.face-tag.unknown {
-  border: 2px dashed rgb(255 255 255 / 0.75);
-}
+/* Unnamed faces stay invisible until hovered, so the poster is not covered in outlines. */
 .face-tag.unknown:hover {
+  border-style: dashed;
   border-color: var(--color-pink);
   background-color: rgb(236 72 153 / 0.2);
 }
@@ -174,6 +173,9 @@ body {
   border-left: 3px solid var(--color-ink);
   border-top: 3px solid var(--color-ink);
   transform: translate(-50%, 6px) rotate(45deg);
+}
+.face-tag.selected .bubble {
+  display: none;
 }
 .face-tag:hover .bubble {
   opacity: 1;
