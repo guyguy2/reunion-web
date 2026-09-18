@@ -22,10 +22,10 @@ function Tape({ title, note, id }: { title: string; note?: string; id: string })
             allowFullScreen
           />
         ) : (
-          <button className="group absolute inset-0 cursor-pointer" onClick={() => (mixtape.pause(), setPlaying(true))} aria-label={`Play ${title}`}>
+          <button className="group absolute inset-0 cursor-pointer" onClick={() => (mixtape.pause(), setPlaying(true))} aria-label={`ניגון ${title}`}>
             <img src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`} alt="" className="h-full w-full object-cover opacity-90" loading="lazy" />
-            <span className="pixel absolute top-2 left-3 text-2xl text-white drop-shadow">PLAY &gt;</span>
-            <span className="btn btn-pink absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 group-hover:scale-105">Press play</span>
+            <span className="pixel absolute start-3 top-2 text-2xl text-white drop-shadow">PLAY</span>
+            <span className="btn btn-pink absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 group-hover:scale-105">לחצו לניגון</span>
           </button>
         )}
       </div>
@@ -50,10 +50,10 @@ export default function Videos() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-8">
-      <h1 className="heading">Video Rental</h1>
-      <p className="max-w-2xl text-lg">Home videos, ceremonies and school plays. Be kind, rewind.</p>
+      <h1 className="heading">ספריית הווידאו</h1>
+      <p className="max-w-2xl text-lg">סרטונים ביתיים, טקסים והצגות. נא להחזיר את הקלטת להתחלה.</p>
       {videos.length === 0 ? (
-        <div className="sticky-note max-w-md text-lg">No tapes on the shelf yet. Organizers: add YouTube links to the videos list in content/event.json.</div>
+        <div className="sticky-note max-w-md text-lg">עדיין אין קלטות על המדף. מארגנים: הוסיפו קישורי יוטיוב לרשימת הסרטונים בקובץ content/event.json.</div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2">
           {videos.map((v) => (

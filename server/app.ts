@@ -69,7 +69,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
 
   app.onError((err, c) => {
     console.error(`${c.req.method} ${c.req.path} failed:`, err.message)
-    return c.json({ error: 'Something went wrong' }, 500)
+    return c.json({ error: 'משהו השתבש' }, 500)
   })
 
   app.get('/healthz', (c) => c.json({ ok: true }))
@@ -79,12 +79,12 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
 
   app.post('/api/login', async (c) => {
     const key = clientKey(c)
-    if (limiter.blocked(key)) return c.json({ error: 'Too many attempts. Try again in a few minutes.' }, 429)
+    if (limiter.blocked(key)) return c.json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.' }, 429)
     const body = await c.req.json().catch(() => ({}))
     const role = typeof body.passcode === 'string' ? roleForPasscode(config, body.passcode) : null
     if (!role) {
       limiter.fail(key)
-      return c.json({ error: 'Wrong passcode' }, 401)
+      return c.json({ error: 'סיסמה שגויה' }, 401)
     }
     limiter.clear(key)
     await startSession(c, config, role)
@@ -130,7 +130,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
     let fields
     try {
       fields = parsePersonInput(await c.req.json().catch(() => null), { admin: false })
-      if (!fields.name) throw new Error('Name is required')
+      if (!fields.name) throw new Error('חובה למלא שם')
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
@@ -149,7 +149,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
       )
       .run(new Date().toISOString(), sha256(token), Number(c.req.param('id')))
     if (result.changes === 0) {
-      return c.json({ error: 'This profile is already claimed. Ask an organizer to reset it if that was not you.' }, 409)
+      return c.json({ error: 'הפרופיל הזה כבר בבעלות מישהו. אם זה לא אתם, בקשו מהמארגנים לאפס אותו.' }, 409)
     }
     return c.json({ token })
   })
@@ -163,13 +163,13 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
 
   app.get('/api/me', (c) => {
     const me = owner(c)
-    if (!me) return c.json({ error: 'Edit link is not valid' }, 403)
+    if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
     return c.json(serializePerson(me, 'full'))
   })
 
   app.patch('/api/me', async (c) => {
     const me = owner(c)
-    if (!me) return c.json({ error: 'Edit link is not valid' }, 403)
+    if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
     try {
       updatePerson(db, me.id, parsePersonInput(await c.req.json().catch(() => null), { admin: false }))
     } catch (err) {
@@ -180,14 +180,14 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
 
   app.post('/api/me/photo/:kind', async (c) => {
     const me = owner(c)
-    if (!me) return c.json({ error: 'Edit link is not valid' }, 403)
+    if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
     const kind = c.req.param('kind')
     if (kind !== 'then' && kind !== 'now') return c.json({ error: 'Unknown photo kind' }, 400)
     let rel: string
     try {
       rel = await saveUpload(config.dataDir, await readImageField(c, 'photo', MAX_UPLOAD_BYTES))
     } catch (err) {
-      return c.json({ error: (err as Error).message || 'Could not read that image' }, 400)
+      return c.json({ error: (err as Error).message || 'לא הצלחנו לקרוא את התמונה' }, 400)
     }
     const column = kind === 'then' ? 'then_photo' : 'now_photo'
     removeUpload(config.dataDir, me[column])
@@ -198,7 +198,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
   // "Remove my info": wipes everything except the name, and releases the claim.
   app.delete('/api/me', (c) => {
     const me = owner(c)
-    if (!me) return c.json({ error: 'Edit link is not valid' }, 403)
+    if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
     removeUpload(config.dataDir, me.now_photo)
     updatePerson(db, me.id, {
       nickname: null, email: null, instagram: null, linkedin: null, city: null, bio: null, quote: null,
@@ -210,11 +210,11 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
   // "That's me" on an unidentified face. Only the profile owner can attach themselves.
   app.post('/api/tags/:id/identify', (c) => {
     const me = owner(c)
-    if (!me) return c.json({ error: 'Claim your profile first' }, 403)
+    if (!me) return c.json({ error: 'קודם צריך ליצור פרופיל' }, 403)
     const result = db
       .prepare('UPDATE tags SET person_id = ? WHERE id = ? AND person_id IS NULL')
       .run(me.id, Number(c.req.param('id')))
-    if (result.changes === 0) return c.json({ error: 'That face is already identified' }, 409)
+    if (result.changes === 0) return c.json({ error: 'כבר יש שם לתמונה הזו' }, 409)
     const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(Number(c.req.param('id'))) as unknown as TagRow
     return c.json(serializeTag(tag))
   })
@@ -230,17 +230,17 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
       personId = Number(body.personId)
     } else {
       const open = db.prepare('SELECT id FROM tags WHERE id = ? AND person_id IS NULL').get(tagId)
-      if (!open) return c.json({ error: 'That face is already identified' }, 409)
+      if (!open) return c.json({ error: 'כבר יש שם לתמונה הזו' }, 409)
       try {
         const fields = parsePersonInput({ name: body.name }, { admin: false })
-        if (!fields.name) throw new Error('Name is required')
+        if (!fields.name) throw new Error('חובה למלא שם')
         personId = insertPerson(db, fields)
       } catch (err) {
         return c.json({ error: (err as Error).message }, 400)
       }
     }
     const result = db.prepare('UPDATE tags SET person_id = ? WHERE id = ? AND person_id IS NULL').run(personId, tagId)
-    if (result.changes === 0) return c.json({ error: 'That face is already identified' }, 409)
+    if (result.changes === 0) return c.json({ error: 'כבר יש שם לתמונה הזו' }, 409)
     return c.json({ personId })
   })
 

@@ -9,16 +9,16 @@ function Countdown({ date }: { date: string }) {
   }, [])
   const left = new Date(date).getTime() - now
   if (Number.isNaN(left)) return null
-  if (left <= 0) return <div className="lcd inline-block text-3xl">IT'S PARTY TIME</div>
+  if (left <= 0) return <div className="lcd inline-block text-3xl">המסיבה התחילה!</div>
   const parts = [
-    ['DAYS', Math.floor(left / 86_400_000)],
-    ['HRS', Math.floor(left / 3_600_000) % 24],
-    ['MIN', Math.floor(left / 60_000) % 60],
-    ['SEC', Math.floor(left / 1000) % 60],
+    ['ימים', Math.floor(left / 86_400_000)],
+    ['שעות', Math.floor(left / 3_600_000) % 24],
+    ['דקות', Math.floor(left / 60_000) % 60],
+    ['שניות', Math.floor(left / 1000) % 60],
   ] as const
   return (
     // Styled after a pager display.
-    <div className="inline-flex gap-3 rounded-xl border-[3px] border-ink bg-ink p-3 shadow-chunk" role="timer" aria-label="Countdown to the reunion">
+    <div className="inline-flex gap-3 rounded-xl border-[3px] border-ink bg-ink p-3 shadow-chunk" role="timer" aria-label="ספירה לאחור לפגישת המחזור">
       {parts.map(([label, value]) => (
         <div key={label} className="lcd min-w-16 text-center">
           <div className="text-4xl leading-none">{String(value).padStart(2, '0')}</div>
@@ -49,40 +49,40 @@ export default function EventPage() {
 
       <div className="grid gap-6 sm:grid-cols-2">
         <section className="chunk p-5">
-          <h2 className="label">When</h2>
+          <h2 className="label">מתי</h2>
           <p className="text-xl font-bold">
             {Number.isNaN(date.getTime())
-              ? 'Date to be announced'
-              : date.toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}
+              ? 'התאריך יפורסם בהמשך'
+              : date.toLocaleString('he-IL', { dateStyle: 'full', timeStyle: 'short' })}
           </p>
-          <h2 className="label mt-4">Where</h2>
+          <h2 className="label mt-4">איפה</h2>
           <p className="text-xl font-bold" dir="auto">
             {event.venue.name}
           </p>
           <p dir="auto">{event.venue.address}</p>
           {event.venue.mapUrl && (
             <a className="btn btn-teal btn-sm mt-3" href={event.venue.mapUrl} target="_blank" rel="noreferrer">
-              Open map
+              פתיחת מפה
             </a>
           )}
         </section>
         <section className="chunk bg-pink p-5 text-white">
-          <h2 className="label">The deal</h2>
+          <h2 className="label">על מה מדובר</h2>
           <p className="text-lg" dir="auto">
             {event.about}
           </p>
-          {coming > 0 && <p className="marker mt-3 text-xl">{coming} classmates say they're coming.</p>}
+          {coming > 0 && <p className="marker mt-3 text-xl">{coming} כבר אישרו הגעה.</p>}
         </section>
       </div>
 
       {event.schedule.length > 0 && (
         <section>
-          <h2 className="mb-3 font-display text-2xl">Tonight's lineup</h2>
+          <h2 className="mb-3 font-display text-2xl">לוח הזמנים של הערב</h2>
           {/* TV-guide grid */}
           <div className="chunk overflow-hidden">
             {event.schedule.map((slot, i) => (
               <div key={i} className={`grid grid-cols-[6.5rem_1fr] ${i ? 'border-t-[3px] border-ink' : ''}`}>
-                <div className="pixel flex items-center justify-center border-r-[3px] border-ink bg-grape p-2 text-2xl text-white">{slot.time}</div>
+                <div className="pixel flex items-center justify-center border-e-[3px] border-ink bg-grape p-2 text-2xl text-white">{slot.time}</div>
                 <div className={`p-3 ${i % 2 ? 'bg-paper' : 'bg-white'}`}>
                   <p className="font-bold" dir="auto">
                     {slot.title}
@@ -98,7 +98,7 @@ export default function EventPage() {
       )}
 
       <footer className="flex items-center justify-center gap-3 pb-6 text-sm">
-        <span>You are visitor number</span>
+        <span>מספר המבקרים עד כה:</span>
         <span className="lcd text-2xl tracking-widest">{String(event.visits).padStart(6, '0')}</span>
       </footer>
     </div>

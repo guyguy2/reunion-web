@@ -10,10 +10,10 @@
   --color-sky: #38bdf8;
   --color-tangerine: #fb923c;
 
-  /* Rubik carries the Hebrew glyphs the display faces lack. */
-  --font-display: 'Bowlby One', 'Rubik', system-ui, sans-serif;
-  --font-marker: 'Permanent Marker', 'Rubik', cursive;
-  --font-pixel: 'VT323', ui-monospace, monospace;
+  /* Each stack pairs a Latin face with a Hebrew one; the browser falls through per glyph. */
+  --font-display: 'Bowlby One', 'Secular One', 'Rubik', system-ui, sans-serif;
+  --font-marker: 'Permanent Marker', 'Gveret Levin', 'Rubik', cursive;
+  --font-pixel: 'VT323', 'Rubik', ui-monospace, monospace;
   --font-sans: 'DM Sans', 'Rubik', system-ui, sans-serif;
 
   --shadow-chunk: 4px 4px 0 var(--color-ink);

@@ -39,7 +39,7 @@ function PhotoField({ label, hint, src, onUpload }: { label: string; hint: strin
         <p className="label">{label}</p>
         <p className="mb-2 text-sm opacity-70">{hint}</p>
         <label className={`btn btn-plain btn-sm ${busy ? 'opacity-50' : ''}`}>
-          {busy ? 'Developing...' : src ? 'Replace photo' : 'Upload photo'}
+          {busy ? 'מפתחים...' : src ? 'החלפת תמונה' : 'העלאת תמונה'}
           <input
             type="file"
             accept="image/*"
@@ -77,27 +77,27 @@ function Join() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4 sm:p-8">
-      <h1 className="heading">My Profile</h1>
+      <h1 className="heading">הפרופיל שלי</h1>
       <div className="chunk space-y-3 p-5">
-        <h2 className="font-display text-xl">Option 1: find your face</h2>
+        <h2 className="font-display text-xl">אפשרות 1: מצאו את עצמכם</h2>
         <p>
-          Open the yearbook, zoom in on your 1996 self and tap your face. If someone already added your name, hit "This is me". If not, tap
-          "That's me!" and type your name.
+          פתחו את ספר המחזור, התקרבו אל עצמכם של 1996 ולחצו על התמונה. אם מישהו כבר הוסיף את שמכם, לחצו על "זה הפרופיל שלי". אם לא, לחצו על
+          "זאת התמונה שלי!" והקלידו את שמכם.
         </p>
         <Link to="/" className="btn btn-pink">
-          Open the yearbook
+          לספר המחזור
         </Link>
       </div>
       <form onSubmit={submit} className="chunk space-y-3 p-5">
-        <h2 className="font-display text-xl">Option 2: not in any picture?</h2>
-        <p>Missed picture day? Add yourself anyway.</p>
+        <h2 className="font-display text-xl">אפשרות 2: לא מופיעים באף תמונה?</h2>
+        <p>פספסתם את יום הצילומים? הוסיפו את עצמכם בכל זאת.</p>
         <label className="label" htmlFor="join-name">
-          Your name
+          השם שלך
         </label>
         <input id="join-name" className="field" dir="auto" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
         {error && <p className="font-bold text-pink">{error}</p>}
         <button className="btn" disabled={name.trim().length < 2}>
-          Create my profile
+          יצירת הפרופיל שלי
         </button>
       </form>
     </div>
@@ -119,7 +119,7 @@ export default function Me() {
   useEffect(() => {
     if (!tokenFromLink) return
     adoptToken(tokenFromLink).then((person) => {
-      if (!person) setLinkError('That edit link is not valid any more. Ask an organizer to reset your profile.')
+      if (!person) setLinkError('קישור העריכה כבר לא בתוקף. בקשו מאחד המארגנים לאפס את הפרופיל.')
       navigate('/me', { replace: true })
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,7 +148,7 @@ export default function Me() {
     try {
       await api('/api/me', { method: 'PATCH', json: draft })
       await reload()
-      setStatus({ kind: 'ok', text: 'Saved. Looking good!' })
+      setStatus({ kind: 'ok', text: 'נשמר. נראה מעולה!' })
     } catch (err) {
       setStatus({ kind: 'error', text: (err as Error).message })
     }
@@ -189,36 +189,36 @@ export default function Me() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4 pb-28 sm:p-8 sm:pb-28">
-      <h1 className="heading">My Profile</h1>
+      <h1 className="heading">הפרופיל שלי</h1>
 
       <div className="chunk space-y-2 bg-sun p-4">
-        <p className="font-bold">{search.get('welcome') ? 'Welcome back! ' : ''}Save your private edit link.</p>
-        <p className="text-sm">This browser will remember you, but the link below is the only way to edit your profile from another device. Do not share it.</p>
+        <p className="font-bold">{search.get('welcome') ? 'ברוכים הבאים! ' : ''}שמרו את קישור העריכה הפרטי שלכם.</p>
+        <p className="text-sm">הדפדפן הזה יזכור אתכם, אבל הקישור שלמטה הוא הדרך היחידה לערוך את הפרופיל ממכשיר אחר. אל תשתפו אותו.</p>
         <div className="flex gap-2">
-          <input className="field pixel text-lg" readOnly value={editLink} onFocus={(e) => e.target.select()} aria-label="Private edit link" />
+          <input className="field pixel text-lg" dir="ltr" readOnly value={editLink} onFocus={(e) => e.target.select()} aria-label="קישור עריכה פרטי" />
           <button className="btn btn-plain shrink-0" onClick={() => navigator.clipboard.writeText(editLink).then(() => setCopied(true))}>
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? 'הועתק' : 'העתקה'}
           </button>
         </div>
       </div>
 
       <form onSubmit={save} className="chunk space-y-4 p-5">
-        {text('name', 'Name')}
+        {text('name', 'שם')}
         <div className="grid gap-4 sm:grid-cols-2">
-          {text('formerName', 'Name back then (if it changed)')}
-          {text('nickname', 'Nickname')}
+          {text('formerName', 'השם אז (אם השתנה)')}
+          {text('nickname', 'כינוי')}
         </div>
-        {text('city', 'Where do you live now?')}
+        {text('city', 'איפה גרים היום?')}
         <div>
           <label className="label" htmlFor="f-bio">
-            What have you been up to?
+            מה קרה מאז?
           </label>
           <textarea id="f-bio" className="field min-h-28" dir="auto" maxLength={1500} value={draft.bio} onChange={(e) => set('bio', e.target.value)} />
         </div>
-        {text('quote', 'Yearbook quote', { placeholder: 'Most likely to...' })}
+        {text('quote', 'ציטוט לספר המחזור', { placeholder: 'הכי סביר ש...' })}
 
         <fieldset>
-          <legend className="label">Coming to the reunion?</legend>
+          <legend className="label">מגיעים לפגישת המחזור?</legend>
           <div className="flex flex-wrap gap-2">
             {(['yes', 'maybe', 'no'] as const).map((value) => (
               <button
@@ -228,20 +228,20 @@ export default function Me() {
                 aria-pressed={draft.attending === value}
                 onClick={() => set('attending', draft.attending === value ? null : value)}
               >
-                {{ yes: "I'll be there", maybe: 'Maybe', no: "Can't make it" }[value]}
+                {{ yes: 'אהיה שם', maybe: 'אולי', no: 'לא אוכל להגיע' }[value]}
               </button>
             ))}
           </div>
         </fieldset>
 
         <fieldset className="space-y-3 rounded-lg border-[3px] border-dashed border-ink p-4">
-          <legend className="label px-2">Contact (only classmates with the passcode can see these)</legend>
-          {text('email', 'Email', { type: 'email' })}
-          {visibility('showEmail', 'Show my email to classmates')}
-          {text('instagram', 'Instagram', { placeholder: '@handle' })}
-          {visibility('showInstagram', 'Show my Instagram')}
-          {text('linkedin', 'LinkedIn URL')}
-          {visibility('showLinkedin', 'Show my LinkedIn')}
+          <legend className="label px-2">יצירת קשר (רק בוגרים עם הסיסמה רואים את הפרטים)</legend>
+          {text('email', 'אימייל', { type: 'email' })}
+          {visibility('showEmail', 'להציג את האימייל שלי')}
+          {text('instagram', 'אינסטגרם', { placeholder: '@handle' })}
+          {visibility('showInstagram', 'להציג את האינסטגרם שלי')}
+          {text('linkedin', 'קישור ללינקדאין')}
+          {visibility('showLinkedin', 'להציג את הלינקדאין שלי')}
         </fieldset>
 
         {status && (
@@ -249,15 +249,15 @@ export default function Me() {
             {status.text}
           </p>
         )}
-        <button className="btn btn-pink w-full">Save profile</button>
+        <button className="btn btn-pink w-full">שמירת הפרופיל</button>
       </form>
 
       <div className="chunk space-y-5 p-5">
-        <h2 className="font-display text-xl">Then and now</h2>
-        <PhotoField label="Now" hint="A recent photo of you. Shows up next to your 1996 face." src={me.nowPhoto} onUpload={(f) => upload('now', f)} />
+        <h2 className="font-display text-xl">אז והיום</h2>
+        <PhotoField label="היום" hint="תמונה עדכנית שלך. תופיע ליד התמונה מ-1996." src={me.nowPhoto} onUpload={(f) => upload('now', f)} />
         <PhotoField
-          label="Then (optional)"
-          hint="Got a better 90s photo than the class picture? Use it instead."
+          label="אז (לא חובה)"
+          hint="יש לכם תמונה טובה יותר משנות ה-90? אפשר להשתמש בה במקום."
           src={me.thenPhoto}
           onUpload={(f) => upload('then', f)}
         />
@@ -265,24 +265,24 @@ export default function Me() {
 
       <div className="flex flex-wrap gap-3">
         <button className="btn btn-plain btn-sm" onClick={() => navigate(`/p/${me.id}`)}>
-          See my profile in the yearbook
+          הפרופיל שלי בספר המחזור
         </button>
         <button className="btn btn-plain btn-sm" onClick={() => (forgetMe(), navigate('/'))}>
-          This is not me (sign out of this profile)
+          זה לא הפרופיל שלי (התנתקות ממנו)
         </button>
         <button className="btn btn-plain btn-sm text-pink" onClick={() => setConfirmRemove(true)}>
-          Remove my info
+          הסרת הפרטים שלי
         </button>
       </div>
       {confirmRemove && (
-        <div className="chunk space-y-3 bg-pink p-4 text-white" role="alertdialog" aria-label="Confirm removal">
-          <p className="font-bold">Remove your contact details, bio and "now" photo from the site? Your name stays on the class pictures.</p>
+        <div className="chunk space-y-3 bg-pink p-4 text-white" role="alertdialog" aria-label="אישור הסרה">
+          <p className="font-bold">להסיר מהאתר את פרטי הקשר, מה שכתבתם ואת התמונה העדכנית? השם יישאר על תמונות המחזור.</p>
           <div className="flex gap-3">
             <button className="btn btn-plain btn-sm" onClick={removeMe}>
-              Yes, remove my info
+              כן, להסיר
             </button>
             <button className="btn btn-plain btn-sm" onClick={() => setConfirmRemove(false)}>
-              Keep it
+              להשאיר
             </button>
           </div>
         </div>

@@ -24,7 +24,7 @@ export default function Gate({ onEnter }: { onEnter: (role: Role) => void }) {
   return (
     <div className="flex min-h-full items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <h1 className="heading mb-6 text-center">Class Reunion</h1>
+        <h1 className="heading mb-6 text-center">פגישת מחזור</h1>
         <form onSubmit={submit} className="chunk overflow-hidden shadow-chunk-lg">
           <div className="flex items-center justify-between border-b-[3px] border-ink bg-grape px-3 py-1.5 text-white">
             <span className="pixel text-xl">HALL_PASS.EXE</span>
@@ -37,15 +37,16 @@ export default function Gate({ onEnter }: { onEnter: (role: Role) => void }) {
             </span>
           </div>
           <div className="space-y-4 p-5">
-            <p className="marker text-lg">Classmates only. What's the secret passcode?</p>
+            <p className="marker text-lg">לבוגרי המחזור בלבד. מה הסיסמה הסודית?</p>
             <div>
               <label className="label" htmlFor="passcode">
-                Passcode
+                סיסמה
               </label>
               <input
                 id="passcode"
                 className="field"
                 type="password"
+                dir="ltr"
                 autoComplete="current-password"
                 autoFocus
                 value={passcode}
@@ -58,9 +59,9 @@ export default function Gate({ onEnter }: { onEnter: (role: Role) => void }) {
               </p>
             )}
             <button className="btn btn-pink w-full" disabled={busy || !passcode}>
-              {busy ? 'Dialing in...' : 'Let me in'}
+              {busy ? 'מתחברים...' : 'תנו לי להיכנס'}
             </button>
-            <p className="text-sm opacity-70">The passcode was in your invitation. Lost it? Ask one of the organizers.</p>
+            <p className="text-sm opacity-70">הסיסמה נמצאת בהזמנה. אבדה? פנו לאחד המארגנים.</p>
           </div>
         </form>
       </div>

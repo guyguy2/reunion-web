@@ -72,9 +72,9 @@ export function parsePersonInput(body: unknown, opts: { admin: boolean }): Recor
     if (!(EDITABLE_FIELDS as readonly string[]).includes(key)) continue
     if (raw !== null && typeof raw !== 'string') throw new Error(`${rawKey} must be text`)
     let value = raw?.trim() || null
-    if (value && value.length > (MAX_LENGTH[key] ?? 200)) throw new Error(`${rawKey} is too long`)
-    if (key === 'name' && !value) throw new Error('Name is required')
-    if (key === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('Email looks invalid')
+    if (value && value.length > (MAX_LENGTH[key] ?? 200)) throw new Error(`הטקסט ארוך מדי (${rawKey})`)
+    if (key === 'name' && !value) throw new Error('חובה למלא שם')
+    if (key === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('כתובת האימייל לא תקינה')
     if (key === 'attending' && value && !['yes', 'no', 'maybe'].includes(value)) throw new Error('Invalid attending value')
     if (key === 'instagram' && value) value = cleanInstagram(value)
     if (key === 'linkedin' && value && !/^https?:\/\//i.test(value)) value = `https://${value}`

@@ -36,7 +36,7 @@ function loadYouTubeApi(): Promise<void> {
 
 function Tape({ label, small }: { label: string; small?: boolean }) {
   return (
-    <svg viewBox="0 0 300 190" className={small ? 'h-10 w-16' : 'w-full'} role="img" aria-label="Cassette tape">
+    <svg viewBox="0 0 300 190" className={small ? 'h-10 w-16' : 'w-full'} role="img" aria-label="קלטת">
       <rect x="4" y="4" width="292" height="182" rx="14" fill="#ec4899" stroke="#151515" strokeWidth="6" />
       <rect x="24" y="22" width="252" height="104" rx="8" fill="#fdf6e3" stroke="#151515" strokeWidth="5" />
       <path d="M24 50h252" stroke="#151515" strokeWidth="3" />
@@ -68,7 +68,7 @@ function Tape({ label, small }: { label: string; small?: boolean }) {
 export default function Cassette() {
   const { event } = useStore()
   const playlistId = event?.music.youtubePlaylistId ?? ''
-  const mixtapeTitle = event?.music.mixtapeTitle ?? 'Class Mixtape'
+  const mixtapeTitle = event?.music.mixtapeTitle ?? 'קלטת המחזור'
   const mount = useRef<HTMLDivElement>(null)
   const player = useRef<YTPlayer | null>(null)
   const [ready, setReady] = useState(false)
@@ -114,50 +114,50 @@ export default function Cassette() {
 
   return (
     <aside
-      className={`fixed bottom-16 left-3 z-30 sm:bottom-4 sm:left-4 ${playing ? 'playing' : ''}`}
-      aria-label="Mixtape player"
+      className={`fixed start-3 bottom-16 z-30 sm:start-4 sm:bottom-4 ${playing ? 'playing' : ''}`}
+      aria-label="נגן הקלטת"
     >
       <div className={`chunk w-72 max-w-[calc(100vw-1.5rem)] space-y-3 p-3 shadow-chunk-lg ${open ? '' : 'hidden'}`}>
         <Tape label={mixtapeTitle} />
         <div className="lcd truncate text-xl" dir="auto">
-          {!playlistId ? 'NO TAPE LOADED' : !ready ? 'LOADING...' : track || 'PRESS PLAY'}
+          {!playlistId ? 'אין קלטת' : !ready ? 'טוען...' : track || 'לחצו על נגן'}
         </div>
         {/* YouTube asks that its player stays visible, so it plays on a tiny TV. */}
         <div ref={mount} className="overflow-hidden rounded-lg border-[3px] border-ink bg-ink [&_iframe]:block [&_iframe]:w-full" />
         {playlistId ? (
           <>
-            <div className="flex items-center justify-between gap-2">
-              <button className={deckButton} onClick={() => player.current?.previousVideo()} disabled={!ready} aria-label="Previous track">
+            <div className="flex items-center justify-between gap-2" dir="ltr">
+              <button className={deckButton} onClick={() => player.current?.previousVideo()} disabled={!ready} aria-label="השיר הקודם">
                 {'|<'}
               </button>
               <button className={`${deckButton} flex-1 bg-sun`} onClick={toggle} disabled={!ready}>
-                {playing ? 'PAUSE' : 'PLAY'}
+                {playing ? 'עצור' : 'נגן'}
               </button>
-              <button className={deckButton} onClick={() => player.current?.nextVideo()} disabled={!ready} aria-label="Next track">
+              <button className={deckButton} onClick={() => player.current?.nextVideo()} disabled={!ready} aria-label="השיר הבא">
                 {'>|'}
               </button>
             </div>
             <label className="flex items-center gap-2 text-sm font-bold uppercase">
-              Vol
+              עוצמה
               <input type="range" min={0} max={100} value={volume} onChange={(e) => setVolume(Number(e.target.value))} className="w-full accent-pink" />
             </label>
           </>
         ) : (
-          <p className="text-sm">Add a YouTube playlist ID to load the mixtape.</p>
+          <p className="text-sm">הוסיפו מזהה פלייליסט של יוטיוב כדי לטעון את הקלטת.</p>
         )}
         <button className="btn btn-plain btn-sm w-full" onClick={() => setOpen(false)}>
-          Eject (hide player)
+          הוצאת הקלטת (הסתרת הנגן)
         </button>
       </div>
 
       {!open && (
         <div className="chunk flex items-center gap-2 p-1.5 pr-2">
-          <button onClick={() => setOpen(true)} aria-label="Open mixtape player" className="cursor-pointer">
+          <button onClick={() => setOpen(true)} aria-label="פתיחת נגן הקלטת" className="cursor-pointer">
             <Tape label="" small />
           </button>
           {playlistId && ready && (
             <button className="btn btn-sm pixel text-lg leading-none" onClick={toggle}>
-              {playing ? 'PAUSE' : 'PLAY'}
+              {playing ? 'עצור' : 'נגן'}
             </button>
           )}
         </div>

@@ -152,7 +152,7 @@ describe('admin', () => {
   it('imports a CSV roster and reports bad rows', async () => {
     const csv = 'Name,Email,City\n"Okafor, Sam",sam@example.com,"Austin, TX"\n,missing@example.com,\nPat Kim,bad-email,\n'
     const res = await app.request('/api/admin/import-csv', { method: 'POST', headers: { Cookie: admin }, body: csv })
-    expect(await res.json()).toMatchObject({ added: 1, skipped: [expect.stringContaining('Row 3'), expect.stringContaining('Row 4')] })
+    expect(await res.json()).toMatchObject({ added: 1, skipped: [expect.stringContaining('שורה 3'), expect.stringContaining('שורה 4')] })
   })
 
   it('builds the wall with one tag per person, tiles a group photo, and supports tagging', async () => {

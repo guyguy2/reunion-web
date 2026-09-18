@@ -75,7 +75,7 @@ export async function rebuildWall(db: Db, dataDir: string) {
   try {
     for (const scene of previous) db.prepare('DELETE FROM scenes WHERE id = ?').run(scene.id)
     const result = db
-      .prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path, sort) VALUES ('wall', 'The Wall', 'mosaic', ?, ?, ?, 99)`)
+      .prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path, sort) VALUES ('wall', 'הקיר', 'mosaic', ?, ?, ?, 99)`)
       .run(tiled.width, tiled.height, tiled.tilesPath)
     const sceneId = Number(result.lastInsertRowid)
     people.forEach((person, i) => insertTag(db, sceneId, boxes[i], person.id))

@@ -28,7 +28,7 @@ function SearchBox({ onPick }: { onPick: (person: Person) => void }) {
         className="field shadow-chunk"
         type="search"
         dir="auto"
-        placeholder={`Find a classmate (${people.length} so far)`}
+        placeholder={`חיפוש לפי שם (${people.length} עד כה)`}
         value={query}
         onChange={(e) => (setQuery(e.target.value), setOpen(true))}
         onFocus={() => setOpen(true)}
@@ -36,11 +36,11 @@ function SearchBox({ onPick }: { onPick: (person: Person) => void }) {
           if (e.key === 'Enter' && results[0]) (onPick(results[0]), setOpen(false))
           if (e.key === 'Escape') setOpen(false)
         }}
-        aria-label="Search classmates by name"
+        aria-label="חיפוש בוגרים לפי שם"
       />
       {open && query.trim() && (
         <ul className="chunk absolute inset-x-0 top-full mt-2 max-h-80 overflow-y-auto p-1">
-          {results.length === 0 && <li className="p-3 text-sm">Nobody by that name yet. Find their face and add them!</li>}
+          {results.length === 0 && <li className="p-3 text-sm">עדיין אין מישהו בשם הזה. מצאו את התמונה והוסיפו שם!</li>}
           {results.map((p) => (
             <li key={p.id}>
               <button
@@ -57,7 +57,7 @@ function SearchBox({ onPick }: { onPick: (person: Person) => void }) {
                     {p.name}
                   </span>
                   <span className="block truncate text-xs opacity-70" dir="auto">
-                    {[p.formerName && `formerly ${p.formerName}`, p.city].filter(Boolean).join(' - ')}
+                    {[p.formerName && `לשעבר ${p.formerName}`, p.city].filter(Boolean).join(' - ')}
                   </span>
                 </span>
               </button>
@@ -108,11 +108,11 @@ export default function Yearbook() {
     return (
       <div className="mx-auto max-w-xl p-6">
         <div className="chunk space-y-3 p-6">
-          <h1 className="heading">No pictures yet</h1>
-          <p>The yearbook is empty. An organizer needs to upload the class photos first.</p>
+          <h1 className="heading">עדיין אין תמונות</h1>
+          <p>ספר המחזור ריק. המארגנים צריכים להעלות קודם את תמונות המחזור.</p>
           {role === 'admin' && (
             <Link className="btn btn-pink" to="/admin">
-              Go to the admin page
+              לעמוד הניהול
             </Link>
           )}
         </div>
@@ -164,7 +164,7 @@ export default function Yearbook() {
         </div>
         {scene.kind === 'group' && scene.tags.length > 0 && (
           <span className="lcd hidden shrink-0 text-lg sm:ms-auto sm:me-24 sm:block">
-            {named}/{scene.tags.length} NAMED
+            {named}/{scene.tags.length} זוהו
           </span>
         )}
       </div>

@@ -1,6 +1,6 @@
 # Reunion Web
 
-Class reunion website (Hadassim, class of '96). Proof of concept.
+Class reunion website (Hadassim, class of '96). Proof of concept. The interface is in Hebrew and laid out right-to-left.
 
 The centerpiece is a zoomable "yearbook": the class composite posters from 1990, 1993 and 1996 as deep-zoom pictures with a clickable box on every face. Classmates find themselves, put a name on a face ("That's me!" or "I know who this is"), claim their profile and fill in what they have been up to. Around it: a 90s cassette-deck mixtape (YouTube playlist), embedded videos, a link to the shared Google Photos album, and event details.
 

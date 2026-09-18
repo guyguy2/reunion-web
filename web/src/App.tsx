@@ -14,16 +14,16 @@ const Admin = lazy(() => import('./routes/Admin.tsx'))
 
 // Each tab is a VHS tape spine: a colored label with a handwritten title.
 const TABS = [
-  { to: '/', label: 'Yearbook', color: 'bg-pink text-white' },
-  { to: '/videos', label: 'Videos', color: 'bg-grape text-white' },
-  { to: '/memories', label: 'Memories', color: 'bg-teal text-white' },
-  { to: '/event', label: 'Event', color: 'bg-sun text-ink' },
-  { to: '/me', label: 'My Profile', color: 'bg-sky text-ink' },
+  { to: '/', label: 'ספר מחזור', color: 'bg-pink text-white' },
+  { to: '/videos', label: 'סרטונים', color: 'bg-grape text-white' },
+  { to: '/memories', label: 'זכרונות', color: 'bg-teal text-white' },
+  { to: '/event', label: 'האירוע', color: 'bg-sun text-ink' },
+  { to: '/me', label: 'הפרופיל שלי', color: 'bg-sky text-ink' },
 ]
 
 function Shell() {
   const { event, role, loading } = useStore()
-  const tabs = role === 'admin' ? [...TABS, { to: '/admin', label: 'Admin', color: 'bg-ink text-white' }] : TABS
+  const tabs = role === 'admin' ? [...TABS, { to: '/admin', label: 'חדר המנהל', color: 'bg-ink text-white' }] : TABS
 
   useEffect(() => {
     if (event?.title) document.title = event.title
@@ -33,7 +33,7 @@ function Shell() {
     <div className="flex h-full flex-col">
       <header className="z-20 flex flex-wrap items-center gap-x-6 gap-y-2 border-b-[3px] border-ink bg-white px-4 py-2">
         <NavLink to="/" className="font-display text-xl leading-none tracking-wide sm:text-2xl" style={{ textShadow: '2px 2px 0 var(--color-sun)' }}>
-          {event?.title ?? 'Class Reunion'}
+          {event?.title ?? 'פגישת מחזור'}
         </NavLink>
         <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t-[3px] border-ink bg-white sm:static sm:gap-2 sm:border-0 sm:bg-transparent">
           {tabs.map((tab) => (
@@ -55,15 +55,15 @@ function Shell() {
           className="ms-auto cursor-pointer text-sm font-bold underline decoration-2 underline-offset-2 opacity-70 hover:opacity-100"
           onClick={() => api('/api/logout', { method: 'POST' }).then(() => location.assign('/'))}
         >
-          Log out
+          התנתקות
         </button>
       </header>
 
       <main className="relative min-h-0 flex-1 overflow-y-auto pb-14 sm:pb-0">
         {loading ? (
-          <p className="pixel p-10 text-center text-2xl">Rewinding the tape...</p>
+          <p className="pixel p-10 text-center text-2xl">מחזירים את הקלטת להתחלה...</p>
         ) : (
-          <Suspense fallback={<p className="pixel p-10 text-center text-2xl">Loading...</p>}>
+          <Suspense fallback={<p className="pixel p-10 text-center text-2xl">טוען...</p>}>
             <Routes>
               <Route path="/" element={<Yearbook />} />
               <Route path="/p/:personId" element={<Yearbook />} />

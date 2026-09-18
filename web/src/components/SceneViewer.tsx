@@ -67,13 +67,14 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
       const name = labelFor(tag)
       const bubble = document.createElement('div')
       bubble.className = 'bubble'
+      bubble.dir = 'rtl'
       const face = document.createElement('img')
       face.alt = ''
       const title = document.createElement('strong')
       title.dir = 'auto'
-      title.textContent = name ?? 'Who dis?'
+      title.textContent = name ?? 'מי בתמונה?'
       const hint = document.createElement('span')
-      hint.textContent = name ? 'Click for profile' : 'Click to add a name'
+      hint.textContent = name ? 'לחצו לצפייה בפרופיל' : 'לחצו להוספת שם'
       bubble.append(face, title, hint)
       el.appendChild(bubble)
       el.addEventListener('mouseenter', () => {
@@ -121,19 +122,20 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
 
   return (
     <div className="absolute inset-0 bg-ink">
-      <div ref={host} className="absolute inset-0" />
-      <div className="pixel pointer-events-none absolute top-3 right-3 flex items-center gap-2 text-xl text-white drop-shadow">
+      {/* The viewer positions things by left/top, so it stays LTR inside the RTL page. */}
+      <div ref={host} dir="ltr" className="absolute inset-0" />
+      <div className="pixel pointer-events-none absolute end-3 top-3 flex items-center gap-2 text-xl text-white drop-shadow">
         <span className="rec-dot inline-block h-3 w-3 rounded-full bg-red-500" /> REC
       </div>
-      <div className="absolute right-3 bottom-20 flex flex-col gap-2 sm:bottom-4">
-        <button className="btn btn-plain pixel h-11 w-11 p-0 text-2xl" onClick={() => zoom(1.6)} aria-label="Zoom in">
+      <div className="absolute end-3 bottom-20 flex flex-col gap-2 sm:bottom-4">
+        <button className="btn btn-plain pixel h-11 w-11 p-0 text-2xl" onClick={() => zoom(1.6)} aria-label="הגדלה">
           +
         </button>
-        <button className="btn btn-plain pixel h-11 w-11 p-0 text-2xl" onClick={() => zoom(1 / 1.6)} aria-label="Zoom out">
+        <button className="btn btn-plain pixel h-11 w-11 p-0 text-2xl" onClick={() => zoom(1 / 1.6)} aria-label="הקטנה">
           -
         </button>
-        <button className="btn btn-plain pixel h-11 w-11 p-0 text-lg" onClick={() => viewer.current?.viewport.goHome()} aria-label="Show the whole picture">
-          ALL
+        <button className="btn btn-plain pixel h-11 w-11 p-0 text-lg" onClick={() => viewer.current?.viewport.goHome()} aria-label="הצגת התמונה כולה">
+          הכל
         </button>
       </div>
     </div>

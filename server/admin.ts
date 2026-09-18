@@ -21,7 +21,7 @@ export function adminRoutes(config: Config, db: Db) {
   admin.post('/people', async (c) => {
     try {
       const fields = parsePersonInput(await c.req.json().catch(() => null), { admin: true })
-      if (!fields.name) throw new Error('Name is required')
+      if (!fields.name) throw new Error('חובה למלא שם')
       return c.json(serializePerson(getPerson(db, insertPerson(db, fields))!, 'full'), 201)
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
@@ -62,7 +62,7 @@ export function adminRoutes(config: Config, db: Db) {
     try {
       rel = await saveUpload(config.dataDir, await readImageField(c, 'photo', MAX_UPLOAD_BYTES))
     } catch (err) {
-      return c.json({ error: (err as Error).message || 'Could not read that image' }, 400)
+      return c.json({ error: (err as Error).message || 'לא הצלחנו לקרוא את התמונה' }, 400)
     }
     const column = kind === 'then' ? 'then_photo' : 'now_photo'
     removeUpload(config.dataDir, person[column])
@@ -78,11 +78,11 @@ export function adminRoutes(config: Config, db: Db) {
     for (const [i, row] of rows.entries()) {
       try {
         const fields = parsePersonInput(row, { admin: true })
-        if (!fields.name) throw new Error('Name is required')
+        if (!fields.name) throw new Error('חובה למלא שם')
         insertPerson(db, fields)
         added++
       } catch (err) {
-        skipped.push(`Row ${i + 2}: ${(err as Error).message}`)
+        skipped.push(`שורה ${i + 2}: ${(err as Error).message}`)
       }
     }
     return c.json({ added, skipped })
@@ -91,12 +91,12 @@ export function adminRoutes(config: Config, db: Db) {
   // ---- Scenes and tags ----
   admin.post('/scenes', async (c) => {
     const body = await c.req.parseBody()
-    const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 80) : 'Group photo'
+    const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 80) : 'תמונה קבוצתית'
     try {
       const id = await addGroupScene(db, config.dataDir, title, await readImageField(c, 'image', MAX_SCENE_BYTES))
       return c.json(listScenes(db).find((s) => s.id === id), 201)
     } catch (err) {
-      return c.json({ error: (err as Error).message || 'Could not process that image' }, 400)
+      return c.json({ error: (err as Error).message || 'לא הצלחנו לעבד את התמונה' }, 400)
     }
   })
 

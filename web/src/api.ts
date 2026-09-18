@@ -102,7 +102,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; js
     credentials: 'same-origin',
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? 'Something went wrong')
+  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? 'משהו השתבש')
   return data as T
 }
 

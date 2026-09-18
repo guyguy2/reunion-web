@@ -183,8 +183,8 @@ export async function buildWall(dataDir: string, people: WallPerson[]) {
 export async function readImageField(c: Context, field: string, maxBytes: number): Promise<Buffer> {
   const body = await c.req.parseBody()
   const file = body[field]
-  if (!(file instanceof File)) throw new Error('No image uploaded')
-  if (file.size > maxBytes) throw new Error(`Image is too large (max ${Math.round(maxBytes / 1024 / 1024)} MB)`)
-  if (!file.type.startsWith('image/')) throw new Error('File must be an image')
+  if (!(file instanceof File)) throw new Error('לא הועלתה תמונה')
+  if (file.size > maxBytes) throw new Error(`התמונה גדולה מדי (עד ${Math.round(maxBytes / 1024 / 1024)}MB)`)
+  if (!file.type.startsWith('image/')) throw new Error('הקובץ חייב להיות תמונה')
   return Buffer.from(await file.arrayBuffer())
 }

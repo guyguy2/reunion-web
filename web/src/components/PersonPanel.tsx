@@ -5,15 +5,15 @@ import { api, faceUrl, matchesPerson, type Person, type Scene, type Tag } from '
 import { useStore } from '../store.tsx'
 
 const ATTENDING = {
-  yes: { text: "I'll be there!", className: 'bg-teal text-white' },
-  maybe: { text: 'Maybe...', className: 'bg-sun text-ink' },
-  no: { text: "Can't make it", className: 'bg-white text-ink' },
+  yes: { text: 'אהיה שם!', className: 'bg-teal text-white' },
+  maybe: { text: 'אולי...', className: 'bg-sun text-ink' },
+  no: { text: 'לא אוכל להגיע', className: 'bg-white text-ink' },
 }
 
 export function Drawer({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   return (
-    <section className="chunk absolute inset-x-2 bottom-16 z-10 max-h-[62%] overflow-y-auto p-4 shadow-chunk-lg sm:inset-x-auto sm:top-3 sm:right-16 sm:bottom-3 sm:max-h-none sm:w-96">
-      <button className="btn btn-plain btn-sm pixel absolute top-2 right-2 text-lg leading-none" onClick={onClose} aria-label="Close">
+    <section className="chunk absolute inset-x-2 bottom-16 z-10 max-h-[62%] overflow-y-auto p-4 shadow-chunk-lg sm:inset-x-auto sm:end-16 sm:top-3 sm:bottom-3 sm:max-h-none sm:w-96">
+      <button className="btn btn-plain btn-sm pixel absolute end-2 top-2 text-lg leading-none" onClick={onClose} aria-label="סגירה">
         X
       </button>
       {children}
@@ -50,7 +50,7 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
 
   return (
     <Drawer onClose={onClose}>
-      <div className="flex items-start gap-4 pr-10">
+      <div className="flex items-start gap-4 pe-10">
         {(person.nowPhoto ?? thenSrc) && (
           <div className="polaroid w-28 shrink-0 -rotate-3 pb-2">
             <img src={(person.nowPhoto ?? thenSrc)!} alt="" className="aspect-[4/5] w-full object-cover" />
@@ -62,7 +62,7 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
           </h2>
           {person.formerName && (
             <p className="text-sm opacity-70" dir="auto">
-              formerly {person.formerName}
+              לשעבר {person.formerName}
             </p>
           )}
           {person.nickname && (
@@ -75,7 +75,7 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
               {person.city}
             </p>
           )}
-          {person.inMemoriam && <p className="mt-1 text-sm font-bold">In loving memory</p>}
+          {person.inMemoriam && <p className="mt-1 text-sm font-bold">נזכור תמיד</p>}
         </div>
       </div>
 
@@ -86,7 +86,7 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
       )}
 
       {person.quote && (
-        <blockquote className="marker mt-4 border-l-[6px] border-pink pl-3 text-lg" dir="auto">
+        <blockquote className="marker mt-4 border-s-[6px] border-pink ps-3 text-lg" dir="auto">
           {person.quote}
         </blockquote>
       )}
@@ -100,7 +100,7 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
         <div className="mt-4 flex flex-wrap gap-2">
           {person.email && (
             <a className="btn btn-plain btn-sm" href={`mailto:${person.email}`}>
-              Email
+              אימייל
             </a>
           )}
           {person.instagram && (
@@ -118,13 +118,13 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
 
       {thenSrc && person.nowPhoto && (
         <div className="mt-5">
-          <h3 className="label">Then / now</h3>
+          <h3 className="label">אז / היום</h3>
           <div className="border-[3px] border-ink">
             {createElement(
               'img-comparison-slider',
               { class: 'block w-full' },
-              <img slot="first" src={thenSrc} alt="Then" className="aspect-[4/5] w-full object-cover" />,
-              <img slot="second" src={person.nowPhoto} alt="Now" className="aspect-[4/5] w-full object-cover" />,
+              <img slot="first" src={thenSrc} alt="אז" className="aspect-[4/5] w-full object-cover" />,
+              <img slot="second" src={person.nowPhoto} alt="היום" className="aspect-[4/5] w-full object-cover" />,
             )}
           </div>
         </div>
@@ -132,7 +132,7 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
 
       {faces.length > 0 && (
         <div className="mt-5">
-          <h3 className="label">Through the years</h3>
+          <h3 className="label">לאורך השנים</h3>
           <div className="flex gap-3 overflow-x-auto pb-2">
             {faces.map(({ scene, tag }) => (
               <button key={tag.id} onClick={() => onJump(scene)} className="polaroid w-24 shrink-0 cursor-pointer pb-1 text-center hover:-translate-y-0.5">
@@ -149,14 +149,14 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
       <div className="mt-5 space-y-2">
         {isMe ? (
           <button className="btn btn-teal w-full" onClick={() => navigate('/me')}>
-            This is you. Edit your profile
+            זה הפרופיל שלך. לעריכה
           </button>
         ) : !person.claimed && !person.inMemoriam && !me ? (
           <button className="btn btn-pink w-full" onClick={claim}>
-            This is me! Claim this profile
+            זה הפרופיל שלי! אני רוצה לערוך אותו
           </button>
         ) : null}
-        {!person.claimed && !isMe && <p className="text-sm opacity-70">Nobody has claimed this profile yet.</p>}
+        {!person.claimed && !isMe && <p className="text-sm opacity-70">אף אחד עדיין לא לקח בעלות על הפרופיל הזה.</p>}
         {error && <p className="font-bold text-pink">{error}</p>}
       </div>
     </Drawer>
@@ -209,38 +209,38 @@ export function UnknownPanel({ tag, onClose, onNamed }: { tag: Tag; onClose: () 
 
   return (
     <Drawer onClose={onClose}>
-      <div className="flex items-center gap-4 pr-10">
+      <div className="flex items-center gap-4 pe-10">
         <div className="polaroid w-28 shrink-0 rotate-2 pb-2">
           <img src={faceUrl(tag)} alt="" className="aspect-square w-full object-cover" />
         </div>
-        <div className="sticky-note text-xl">Who dis?</div>
+        <div className="sticky-note text-xl">מי בתמונה?</div>
       </div>
-      <p className="mt-4">Nobody has put a name to this face yet. Help fill in the yearbook:</p>
+      <p className="mt-4">עדיין אין שם לתמונה הזו. עזרו למלא את ספר המחזור:</p>
 
       <div className="mt-3 flex gap-2">
         {me ? (
           <button className="btn btn-pink flex-1" disabled={busy} onClick={thatsMeExisting}>
-            That's me!
+            זאת התמונה שלי!
           </button>
         ) : (
           <button className={`btn flex-1 ${mode === 'me' ? 'btn-pink' : 'btn-plain'}`} onClick={() => setMode('me')}>
-            That's me!
+            זאת התמונה שלי!
           </button>
         )}
         <button className={`btn flex-1 ${mode === 'other' ? 'btn-teal' : 'btn-plain'}`} onClick={() => setMode('other')}>
-          I know who this is
+          אני מזהה! להוספת שם
         </button>
       </div>
 
       {mode && !(mode === 'me' && me) && (
         <form className="mt-4 space-y-2" onSubmit={mode === 'me' ? thatsMeNew : (e) => (e.preventDefault(), suggest({ name }))}>
           <label className="label" htmlFor="face-name">
-            {mode === 'me' ? 'Your name' : 'Their name'}
+            {mode === 'me' ? 'השם שלך' : 'השם של מי שבתמונה'}
           </label>
           <input id="face-name" className="field" dir="auto" autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
           {matches.length > 0 && (
             <div className="space-y-1">
-              <p className="text-sm font-bold">Already in the yearbook? Pick them:</p>
+              <p className="text-sm font-bold">כבר מופיעים בספר המחזור? בחרו:</p>
               {matches.map((p) => (
                 <button
                   type="button"
@@ -260,13 +260,13 @@ export function UnknownPanel({ tag, onClose, onNamed }: { tag: Tag; onClose: () 
                   }
                 >
                   {p.name}
-                  {mode === 'me' && p.claimed ? ' (already claimed)' : ''}
+                  {mode === 'me' && p.claimed ? ' (הפרופיל כבר בבעלות מישהו)' : ''}
                 </button>
               ))}
             </div>
           )}
           <button className="btn w-full" disabled={busy || name.trim().length < 2}>
-            {mode === 'me' ? 'Create my profile' : 'Add this name'}
+            {mode === 'me' ? 'יצירת הפרופיל שלי' : 'הוספת השם'}
           </button>
         </form>
       )}

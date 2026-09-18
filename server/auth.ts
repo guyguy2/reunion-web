@@ -56,14 +56,14 @@ export async function readRole(c: Context, config: Config): Promise<Role | null>
 export function requireSession(config: Config): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const role = await readRole(c, config)
-    if (!role) return c.json({ error: 'Passcode required' }, 401)
+    if (!role) return c.json({ error: 'נדרשת סיסמה' }, 401)
     c.set('role', role)
     await next()
   }
 }
 
 export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
-  if (c.get('role') !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  if (c.get('role') !== 'admin') return c.json({ error: 'למארגנים בלבד' }, 403)
   await next()
 }
 

@@ -109,9 +109,9 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
       const boxes = await detectFaces(scene.dzi.replace(/scene\.dzi$/, 'scene.jpg'), scene.tags, setProgress)
       if (boxes.length) await api(`/api/admin/scenes/${scene.id}/tags/batch`, { json: { boxes } })
       await reload()
-      setMessage(`Found ${boxes.length} new faces. Check the picture and fix any misses by hand.`)
+      setMessage(`נמצאו ${boxes.length} פנים חדשות. בדקו את התמונה ותקנו ידנית מה שפוספס.`)
     } catch (err) {
-      setMessage(`Face detection failed: ${(err as Error).message}`)
+      setMessage(`זיהוי הפנים נכשל: ${(err as Error).message}`)
     } finally {
       setProgress(null)
     }
@@ -123,41 +123,41 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
   return (
     <div className="absolute inset-0 z-10 flex flex-col bg-paper sm:flex-row">
       <div className="relative min-h-0 flex-1 bg-ink">
-        <div ref={host} className="absolute inset-0" />
+        <div ref={host} dir="ltr" className="absolute inset-0" />
       </div>
-      <aside className="max-h-[50%] w-full shrink-0 space-y-4 overflow-y-auto border-t-[3px] border-ink bg-white p-4 sm:max-h-none sm:w-80 sm:border-t-0 sm:border-l-[3px]">
+      <aside className="max-h-[50%] w-full shrink-0 space-y-4 overflow-y-auto border-t-[3px] border-ink bg-white p-4 sm:max-h-none sm:w-80 sm:border-s-[3px] sm:border-t-0">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-display text-lg leading-tight" dir="auto">
             {scene.title}
           </h2>
           <button className="btn btn-plain btn-sm" onClick={onClose}>
-            Done
+            סיום
           </button>
         </div>
         <p className="lcd text-lg">
-          {scene.tags.length} FACES / {named} NAMED
+          {scene.tags.length} פנים / {named} זוהו
         </p>
 
         <div className="grid grid-cols-2 gap-2">
           <button className={`btn btn-sm ${drawing ? 'btn-plain' : 'btn-teal'}`} onClick={() => setDrawing(false)}>
-            Move / select
+            הזזה / בחירה
           </button>
           <button className={`btn btn-sm ${drawing ? 'btn-pink' : 'btn-plain'}`} onClick={() => setDrawing(true)}>
-            Draw boxes
+            ציור מסגרות
           </button>
         </div>
 
         <div className="space-y-2">
           <button className="btn w-full" disabled={progress !== null} onClick={autoDetect}>
-            {progress === null ? 'Auto-detect faces' : `Scanning... ${Math.round(progress * 100)}%`}
+            {progress === null ? 'זיהוי פנים אוטומטי' : `סורק... ${Math.round(progress * 100)}%`}
           </button>
-          <p className="text-xs opacity-70">Runs in this browser. Adds a box for every face it finds that does not have one yet. Classmates then name the faces.</p>
+          <p className="text-xs opacity-70">רץ בדפדפן הזה. מוסיף מסגרת לכל פנים שעדיין אין להן מסגרת. אחר כך הבוגרים מוסיפים שמות.</p>
           <button
             className="btn btn-plain btn-sm w-full"
             disabled={progress !== null}
             onClick={() => act(() => api(`/api/admin/scenes/${scene.id}/unidentified-tags`, { method: 'DELETE' }))}
           >
-            Clear all unnamed boxes
+            ניקוי כל המסגרות ללא שם
           </button>
         </div>
         {message && <p className="rounded-lg border-[3px] border-ink bg-sun p-2 text-sm font-bold">{message}</p>}
@@ -167,10 +167,10 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
             <div className="flex items-center gap-3">
               <img src={faceUrl(selected)} alt="" className="h-20 w-20 border-[3px] border-ink object-cover" />
               <p className="font-bold" dir="auto">
-                {personById(selected.personId)?.name ?? 'No name yet'}
+                {personById(selected.personId)?.name ?? 'עדיין בלי שם'}
               </p>
             </div>
-            <input className="field" dir="auto" placeholder="Type a name..." value={query} onChange={(e) => setQuery(e.target.value)} />
+            <input className="field" dir="auto" placeholder="הקלידו שם..." value={query} onChange={(e) => setQuery(e.target.value)} />
             {matches.map((p) => (
               <button key={p.id} dir="auto" className="btn btn-plain btn-sm w-full justify-start" onClick={() => (assign({ personId: p.id }), setQuery(''))}>
                 {p.name}
@@ -187,20 +187,20 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
                   })
                 }
               >
-                Add "{query.trim()}" as a new person
+                הוספת "{query.trim()}" כאדם חדש
               </button>
             )}
             <div className="grid grid-cols-2 gap-2">
               <button className="btn btn-plain btn-sm" disabled={selected.personId == null} onClick={() => assign({ personId: null })}>
-                Remove name
+                הסרת השם
               </button>
               <button className="btn btn-plain btn-sm text-pink" onClick={() => act(() => api(`/api/admin/tags/${selected.id}`, { method: 'DELETE' })).then(() => setSelectedId(null))}>
-                Delete box
+                מחיקת המסגרת
               </button>
             </div>
           </div>
         ) : (
-          <p className="border-t-[3px] border-ink pt-4 text-sm">Select a box to name it, move it or delete it. Switch to "Draw boxes" to add faces by hand.</p>
+          <p className="border-t-[3px] border-ink pt-4 text-sm">בחרו מסגרת כדי לתת לה שם, להזיז או למחוק אותה. עברו ל"ציור מסגרות" כדי להוסיף פנים ידנית.</p>
         )}
       </aside>
     </div>
