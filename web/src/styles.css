@@ -1,0 +1,187 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink: #151515;
+  --color-paper: #fdf6e3;
+  --color-teal: #14b8a6;
+  --color-pink: #ec4899;
+  --color-grape: #8b5cf6;
+  --color-sun: #facc15;
+  --color-sky: #38bdf8;
+  --color-tangerine: #fb923c;
+
+  /* Rubik carries the Hebrew glyphs the display faces lack. */
+  --font-display: 'Bowlby One', 'Rubik', system-ui, sans-serif;
+  --font-marker: 'Permanent Marker', 'Rubik', cursive;
+  --font-pixel: 'VT323', ui-monospace, monospace;
+  --font-sans: 'DM Sans', 'Rubik', system-ui, sans-serif;
+
+  --shadow-chunk: 4px 4px 0 var(--color-ink);
+  --shadow-chunk-lg: 7px 7px 0 var(--color-ink);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background-color: var(--color-paper);
+  /* Memphis confetti: squiggle, triangle, dots. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cpath d='M20 40q10-14 20 0t20 0 20 0' fill='none' stroke='%23ec4899' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M170 30l26 14-26 14z' fill='%2314b8a6'/%3E%3Ccircle cx='60' cy='150' r='9' fill='%23facc15'/%3E%3Ccircle cx='200' cy='190' r='6' fill='%238b5cf6'/%3E%3Cpath d='M120 190q8-12 16 0t16 0' fill='none' stroke='%2338bdf8' stroke-width='5' stroke-linecap='round'/%3E%3Crect x='130' y='100' width='16' height='16' fill='none' stroke='%23fb923c' stroke-width='4' transform='rotate(20 138 108)'/%3E%3C/svg%3E");
+  background-size: 240px 240px;
+}
+
+@layer components {
+  .chunk {
+    @apply rounded-xl border-[3px] border-ink bg-white shadow-chunk;
+  }
+  .btn {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border-[3px] border-ink bg-sun px-4 py-2 font-bold text-ink shadow-chunk transition-transform select-none;
+  }
+  .btn:hover {
+    transform: translate(-1px, -1px);
+  }
+  .btn:active {
+    transform: translate(3px, 3px);
+    box-shadow: 1px 1px 0 var(--color-ink);
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+  .btn-pink {
+    @apply bg-pink text-white;
+  }
+  .btn-teal {
+    @apply bg-teal text-white;
+  }
+  .btn-plain {
+    @apply bg-white;
+  }
+  .btn-sm {
+    @apply px-3 py-1 text-sm;
+  }
+  .field {
+    @apply w-full rounded-lg border-[3px] border-ink bg-white px-3 py-2 text-base outline-none focus:ring-4 focus:ring-sun;
+  }
+  .label {
+    @apply mb-1 block text-sm font-bold tracking-wide uppercase;
+  }
+  .heading {
+    font-family: var(--font-display);
+    @apply text-3xl leading-tight tracking-wide sm:text-4xl;
+    text-shadow: 3px 3px 0 var(--color-sun);
+  }
+  .marker {
+    font-family: var(--font-marker);
+  }
+  .pixel {
+    font-family: var(--font-pixel);
+  }
+  .lcd {
+    font-family: var(--font-pixel);
+    @apply rounded-md border-[3px] border-ink bg-[#b9c7a0] px-3 py-1 text-[#1f2a17];
+    box-shadow: inset 2px 2px 0 rgb(0 0 0 / 0.25);
+  }
+  .polaroid {
+    @apply border-[3px] border-ink bg-white p-2 pb-8 shadow-chunk;
+  }
+  .sticky-note {
+    @apply bg-sun p-4 shadow-chunk;
+    font-family: var(--font-marker);
+    transform: rotate(-1.5deg);
+  }
+}
+
+/* ---- Scene viewer ---- */
+.face-tag {
+  box-sizing: border-box;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+.face-tag:hover,
+.face-tag:focus-visible {
+  border-color: var(--color-sun);
+  background-color: rgb(250 204 21 / 0.18);
+  outline: none;
+}
+.face-tag.unknown {
+  border: 2px dashed rgb(255 255 255 / 0.75);
+}
+.face-tag.unknown:hover {
+  border-color: var(--color-pink);
+  background-color: rgb(236 72 153 / 0.2);
+}
+.face-tag.selected {
+  border: 3px solid var(--color-pink);
+  box-shadow: 0 0 0 3px var(--color-ink), 0 0 0 9999px rgb(0 0 0 / 0.35);
+  z-index: 2;
+}
+.face-tag.mine {
+  border-color: var(--color-teal);
+}
+.face-tag .tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  font: 700 13px var(--font-sans);
+  color: #fff;
+  background: var(--color-ink);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.face-tag:hover .tip,
+.face-tag.selected .tip {
+  opacity: 1;
+}
+
+/* ---- Cassette ---- */
+@keyframes reel {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.reel {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.playing .reel {
+  animation: reel 2.4s linear infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+.rec-dot {
+  animation: blink 1.2s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playing .reel,
+  .rec-dot {
+    animation: none;
+  }
+  .btn {
+    transition: none;
+  }
+}
+
+/* Then/now slider theming */
+img-comparison-slider {
+  --divider-width: 4px;
+  --divider-color: var(--color-ink);
+  --default-handle-color: var(--color-pink);
+  --default-handle-width: 56px;
+  outline: none;
+}

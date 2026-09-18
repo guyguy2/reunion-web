@@ -1,0 +1,26 @@
+{
+  "title": "Class Reunion",
+  "tagline": "Placeholder event details. Set EVENT_JSON to show the real ones.",
+  "school": "School name",
+  "date": "2030-01-01T18:00:00",
+  "venue": {
+    "name": "Venue TBD",
+    "address": "",
+    "mapUrl": ""
+  },
+  "about": "One evening, one dance floor, and everyone you passed notes to in class.",
+  "schedule": [
+    { "time": "18:00", "title": "Doors open", "detail": "Name tags and yearbook photos" },
+    { "time": "19:00", "title": "Dinner", "detail": "" },
+    { "time": "21:00", "title": "Dance floor", "detail": "Only the music from back then" }
+  ],
+  "music": {
+    "youtubePlaylistId": "",
+    "mixtapeTitle": "Class mixtape - side A"
+  },
+  "memories": {
+    "albumTitle": "Shared album",
+    "blurb": "Photos from trips, parties and old haircuts. Add yours to the shared Google Photos album."
+  },
+  "videos": []
+}
