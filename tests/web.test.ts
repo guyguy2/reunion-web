@@ -1,13 +1,15 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { Person, Scene, Tape } from '../web/src/api.ts'
+import { matchesPerson, type Person, type Scene, type Tape } from '../web/src/api.ts'
 import ContactLinks from '../web/src/components/ContactLinks.tsx'
 import { daysLeft, rsvpShortcut } from '../web/src/components/Rsvp.tsx'
 import { NoteCard } from '../web/src/components/Notes.tsx'
+import { firstName, greeting } from '../web/src/components/Welcome.tsx'
+import { nameKey, possibleDuplicates } from '../web/src/roster.ts'
 import { buildShelf, canSkip, nextTape, pickTape, spotifyUri, tapeFinished } from '../web/src/tapes.ts'
 import { embedUrl, isTallEmbed, thumbnailUrl } from '../web/src/videos.ts'
-import { tilePhoto, unknownFaces } from '../web/src/yearbook.ts'
+import { compareClass, filterOptions, filterPeople, isFiltering, NO_FILTERS, tilePhoto, unknownFaces, type Filters } from '../web/src/yearbook.ts'
 
 type Links = { email: string | null; instagram: string | null; linkedin: string | null; facebook?: string | null; website?: string | null; phone?: string | null; x?: string | null }
 const render = (person: Links) => renderToStaticMarkup(createElement(ContactLinks, { person: { facebook: null, website: null, phone: null, x: null, ...person } }))
@@ -62,8 +64,8 @@ describe('notes', () => {
 })
 
 describe('yearbook grid', () => {
-  const tag = (id: number, sceneId: number, personId: number | null) => ({ id, sceneId, personId, x: 10, y: 10, w: 50, h: 60 })
-  const scene = (id: number, kind: Scene['kind'], tags: ReturnType<typeof tag>[]): Scene => ({ id, slug: `s${id}`, title: `S${id}`, kind, width: 1000, height: 800, dzi: '', tags })
+  const tag = (id: number, sceneId: number, personId: number | null, classLabel: string | null = null) => ({ id, sceneId, personId, x: 10, y: 10, w: 50, h: 60, caption: null, classLabel, staff: false })
+  const scene = (id: number, kind: Scene['kind'], tags: ReturnType<typeof tag>[], year: number | null = null): Scene => ({ id, slug: `s${id}`, title: `S${id}`, kind, year, width: 1000, height: 800, dzi: '', tags })
   const scenes = [scene(1, 'group', [tag(11, 1, 7), tag(12, 1, null)]), scene(2, 'group', [tag(21, 2, 7), tag(22, 2, null)]), scene(3, 'mosaic', [tag(31, 3, null)])]
   const person = (extra: Partial<Person> = {}) => ({ id: 7, thenPhoto: null, nowPhoto: null, ...extra }) as Person
 
@@ -76,6 +78,89 @@ describe('yearbook grid', () => {
 
   it('lists unnamed faces from class photos only, newest photo first', () => {
     expect(unknownFaces(scenes).map((t) => t.id)).toEqual([22, 12])
+  })
+})
+
+describe('roster duplicates', () => {
+  const tag = (id: number, sceneId: number, personId: number) => ({ id, sceneId, personId, x: 0, y: 0, w: 1, h: 1, caption: null, classLabel: null, staff: false })
+  const scene = (id: number, tags: ReturnType<typeof tag>[]): Scene => ({ id, slug: `s${id}`, title: `S${id}`, kind: 'group', year: 1990 + id, width: 10, height: 10, dzi: '', tags })
+  const people = [
+    { id: 1, name: 'ד. אלמוני' },
+    { id: 2, name: 'ד. אלמונני' },
+    { id: 3, name: 'ד. אלמונני' },
+    { id: 4, name: 'מ. אלמונני' },
+  ] as Person[]
+
+  it('ignores dots, spaces and final letters when comparing names', () => {
+    expect(nameKey('א. בן-פלוני')).toBe('אבנפלוני')
+    expect(nameKey('ד. פלמון')).toBe(nameKey('ד.פלמונ'))
+  })
+
+  it('pairs near-identical names from different posters, never two people on one poster or another initial', () => {
+    const scenes = [scene(1, [tag(1, 1, 1)]), scene(2, [tag(2, 2, 2), tag(3, 2, 3), tag(4, 2, 4)])]
+    expect(possibleDuplicates(people, scenes).map(([a, b]) => [a.id, b.id])).toEqual([[1, 2], [1, 3]])
+  })
+})
+
+describe('welcome', () => {
+  it('greets by the time of day', () => {
+    expect([6, 13, 19, 23, 3].map(greeting)).toEqual(['בוקר טוב', 'צהריים טובים', 'ערב טוב', 'לילה טוב', 'לילה טוב'])
+  })
+
+  it('uses the nickname, else the first name, and keeps a poster name whole', () => {
+    expect(firstName({ name: 'Dana Zur', nickname: 'Dandan' })).toBe('Dandan')
+    expect(firstName({ name: 'Dana Zur', nickname: null })).toBe('Dana')
+    expect(firstName({ name: 'י. ישראלי', nickname: null })).toBe('י. ישראלי')
+  })
+})
+
+describe('slicing the yearbook', () => {
+  const tag = (id: number, sceneId: number, personId: number | null, classLabel: string | null = null) => ({ id, sceneId, personId, x: 10, y: 10, w: 50, h: 60, caption: null, classLabel, staff: false })
+  const scene = (id: number, year: number | null, tags: ReturnType<typeof tag>[], kind: Scene['kind'] = 'group'): Scene => ({ id, slug: `s${id}`, title: `S${id}`, kind, year, width: 1000, height: 800, dzi: '', tags })
+  const scenes = [
+    scene(1, 1993, [tag(11, 1, 1, "ט'-2"), tag(12, 1, 2, "ט'-10"), tag(13, 1, 3, "ט'-2")]),
+    scene(2, 1996, [tag(21, 2, 1, 'י"ב-3'), tag(22, 2, 4, 'י"ב-1'), tag(23, 2, null, 'י"ב-1')]),
+    scene(3, null, [tag(31, 3, 1)], 'mosaic'),
+  ]
+  const people = [
+    { id: 1, name: 'י. ישראלי', gender: 'f' },
+    { id: 2, name: 'א. בן-פלוני', gender: 'm' },
+    { id: 3, name: 'דנה צור', gender: null },
+    { id: 4, name: 'ד. פלוני', gender: 'm' },
+    { id: 5, name: 'תמר שלא בתמונות', gender: 'f' },
+  ] as Person[]
+  const slice = (f: Partial<Filters>) => filterPeople(people, scenes, { ...NO_FILTERS, ...f }, matchesPerson).map((r) => r.person.id)
+
+  it('offers each year with its classes in grade order, numbers counted as numbers', () => {
+    expect(filterOptions(scenes)).toEqual([
+      { year: 1993, classes: ["ט'-2", "ט'-10"] },
+      { year: 1996, classes: ['י"ב-1', 'י"ב-3'] },
+    ])
+    expect(['י"ב-1', "ט'-7", "ו'-2"].sort(compareClass)).toEqual(["ו'-2", "ט'-7", 'י"ב-1'])
+  })
+
+  it('keeps everyone when nothing is chosen, sorted by surname for poster names', () => {
+    expect(isFiltering(NO_FILTERS)).toBe(false)
+    expect(slice({})).toEqual([2, 3, 1, 4, 5])
+  })
+
+  it('filters by year, class, gender and name, together', () => {
+    expect(slice({ year: 1996 })).toEqual([1, 4])
+    expect(slice({ classLabel: "ט'-2" })).toEqual([3, 1])
+    expect(slice({ gender: 'm' })).toEqual([2, 4])
+    expect(slice({ year: 1993, gender: 'f' })).toEqual([1])
+    expect(slice({ query: 'ישראלי', year: 1996 })).toEqual([1])
+    expect(slice({ year: 1993, classLabel: 'י"ב-3' })).toEqual([])
+  })
+
+  it("shows the face from the year that was asked for, and the newest one otherwise", () => {
+    const row = (f: Partial<Filters>) => filterPeople(people, scenes, { ...NO_FILTERS, ...f }, matchesPerson).find((r) => r.person.id === 1)!
+    expect(row({ year: 1993 }).appearance!.tag.id).toBe(11)
+    expect(row({}).appearance!.tag.id).toBe(21)
+  })
+
+  it('sorts by class: newest poster first, classes in order, people without a class last', () => {
+    expect(slice({ sort: 'class' })).toEqual([4, 1, 3, 2, 5])
   })
 })
 

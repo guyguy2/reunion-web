@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { api, type FeedbackMessage } from '../api.ts'
 import { useStore } from '../store.tsx'
 import Tagger from './Tagger.tsx'
+import Roster from './Roster.tsx'
 
 /** Destructive actions ask twice, inline, instead of using a browser dialog. */
 function ConfirmButton({ label, confirmLabel, onConfirm, className = '' }: { label: string; confirmLabel: string; onConfirm: () => void; className?: string }) {
@@ -140,6 +141,7 @@ function Backup() {
 const TABS = [
   { id: 'overview', label: 'סקירה' },
   { id: 'people', label: 'אנשים' },
+  { id: 'roster', label: 'רשימת הכיתות' },
   { id: 'scenes', label: 'תמונות' },
 ] as const
 type TabId = (typeof TABS)[number]['id']
@@ -208,6 +210,8 @@ export default function Admin() {
           <FeedbackInbox />
         </>
       )}
+
+      {tab === 'roster' && <Roster />}
 
       {tab === 'scenes' && (
         <Section title="תמונות מחזור">

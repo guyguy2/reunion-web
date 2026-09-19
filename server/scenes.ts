@@ -2,14 +2,16 @@ import type { Db, SceneRow, TagRow } from './db.ts'
 import { buildWall, cropFace, removeSceneFiles, tileScene, type Box, type WallPerson } from './images.ts'
 import { listPeople } from './people.ts'
 
-export function listScenes(db: Db) {
+/** Staff faces are left out unless asked for; only the organizers' roster tool asks. */
+export function listScenes(db: Db, opts: { staff?: boolean } = {}) {
   const scenes = db.prepare('SELECT * FROM scenes ORDER BY sort, id').all() as unknown as SceneRow[]
-  const tags = db.prepare('SELECT * FROM tags ORDER BY id').all() as unknown as TagRow[]
+  const tags = db.prepare(`SELECT * FROM tags ${opts.staff ? '' : 'WHERE is_staff = 0'} ORDER BY id`).all() as unknown as TagRow[]
   return scenes.map((scene) => ({
     id: scene.id,
     slug: scene.slug,
     title: scene.title,
     kind: scene.kind,
+    year: scene.year,
     width: scene.width,
     height: scene.height,
     dzi: `/media/${scene.tiles_path}/scene.dzi`,
@@ -18,11 +20,20 @@ export function listScenes(db: Db) {
 }
 
 export function serializeTag(tag: TagRow) {
-  return { id: tag.id, sceneId: tag.scene_id, personId: tag.person_id, x: tag.x, y: tag.y, w: tag.w, h: tag.h }
+  return {
+    id: tag.id, sceneId: tag.scene_id, personId: tag.person_id, x: tag.x, y: tag.y, w: tag.w, h: tag.h,
+    caption: tag.caption, classLabel: tag.class_label, staff: Boolean(tag.is_staff),
+  }
 }
 
 export function getScene(db: Db, id: number): SceneRow | undefined {
   return db.prepare('SELECT * FROM scenes WHERE id = ?').get(id) as SceneRow | undefined
+}
+
+/** "1996 - graduation" is from 1996. */
+export function titleYear(title: string): number | null {
+  const match = /^(19|20)\d\d/.exec(title.trim())
+  return match ? Number(match[0]) : null
 }
 
 function slugify(title: string): string {
@@ -34,8 +45,8 @@ export async function addGroupScene(db: Db, dataDir: string, title: string, imag
   const slug = slugify(title)
   const tiled = await tileScene(dataDir, slug, image)
   const result = db
-    .prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path, sort) VALUES (?, ?, 'group', ?, ?, ?, 1)`)
-    .run(slug, title, tiled.width, tiled.height, tiled.tilesPath)
+    .prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path, sort, year) VALUES (?, ?, 'group', ?, ?, ?, 1, ?)`)
+    .run(slug, title, tiled.width, tiled.height, tiled.tilesPath, titleYear(title))
   return Number(result.lastInsertRowid)
 }
 

@@ -429,11 +429,14 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(Number(c.req.param('id'))) as unknown as TagRow | undefined
     const scene = tag && getScene(db, tag.scene_id)
     if (!tag || !scene) return c.notFound()
-    const name = `${tag.id}-${[tag.x, tag.y, tag.w, tag.h].map(Math.round).join('-')}.webp`
+    // "?caption" widens the crop to take in the name printed under the photo, for checking it in the roster tool.
+    const wide = c.req.query('caption') != null
+    const name = `${tag.id}-${[tag.x, tag.y, tag.w, tag.h].map(Math.round).join('-')}${wide ? '-c' : ''}.webp`
     const file = path.join(config.dataDir, 'crops', name)
     if (!fs.existsSync(file)) {
       fs.mkdirSync(path.dirname(file), { recursive: true })
-      fs.writeFileSync(file, await cropFace(config.dataDir, scene.tiles_path, tag))
+      const box = wide ? { x: tag.x - tag.w * 0.4, y: tag.y, w: tag.w * 1.8, h: tag.h * 1.5 } : tag
+      fs.writeFileSync(file, await cropFace(config.dataDir, scene.tiles_path, box))
     }
     return sendFile(c, path.join(config.dataDir, 'crops'), name, 'private, max-age=31536000, immutable')
   })

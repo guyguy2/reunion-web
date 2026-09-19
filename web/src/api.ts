@@ -18,6 +18,7 @@ export interface Person {
   thenPhoto: string | null
   nowPhoto: string | null
   attending: 'yes' | 'no' | 'maybe' | null
+  gender: 'm' | 'f' | null
   inMemoriam: boolean
   claimed: boolean
   /** Whether the owner has chosen a personal code for signing in on other devices. */
@@ -41,6 +42,11 @@ export interface Tag {
   y: number
   w: number
   h: number
+  /** The name printed under the face on the poster. */
+  caption: string | null
+  classLabel: string | null
+  /** Staff faces only ever reach the organizers' roster tool. */
+  staff: boolean
 }
 
 export interface Scene {
@@ -48,6 +54,7 @@ export interface Scene {
   slug: string
   title: string
   kind: 'mosaic' | 'group'
+  year: number | null
   width: number
   height: number
   dzi: string

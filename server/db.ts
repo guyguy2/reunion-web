@@ -22,6 +22,7 @@ export interface PersonRow {
   then_photo: string | null
   now_photo: string | null
   attending: string | null
+  gender: 'm' | 'f' | null
   in_memoriam: number
   show_email: number
   show_instagram: number
@@ -44,6 +45,8 @@ export interface SceneRow {
   height: number
   tiles_path: string
   sort: number
+  /** The year the picture is from, for filtering. Read from a title that starts with one. */
+  year: number | null
 }
 
 export interface TagRow {
@@ -54,6 +57,11 @@ export interface TagRow {
   y: number
   w: number
   h: number
+  /** The name printed under the face on the poster, e.g. an initial and a surname. */
+  caption: string | null
+  class_label: string | null
+  /** Staff faces stay in the database but are left out of the yearbook. */
+  is_staff: number
 }
 
 export interface TapeRow {
@@ -255,6 +263,14 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX quote_comments_quote ON quote_comments(quote_id);
+  `,
+  `
+  ALTER TABLE people ADD COLUMN gender TEXT CHECK (gender IN ('m', 'f'));
+  ALTER TABLE scenes ADD COLUMN year INTEGER;
+  UPDATE scenes SET year = CAST(substr(title, 1, 4) AS INTEGER) WHERE title GLOB '[12][0-9][0-9][0-9]*';
+  ALTER TABLE tags ADD COLUMN caption TEXT;
+  ALTER TABLE tags ADD COLUMN class_label TEXT;
+  ALTER TABLE tags ADD COLUMN is_staff INTEGER NOT NULL DEFAULT 0;
   `,
 ]
 

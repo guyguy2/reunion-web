@@ -13,6 +13,7 @@
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server/index.js",
     "start": "node dist/server/index.js",
     "seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
+    "roster:import": "tsx --env-file-if-exists=.env scripts/import-roster.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
