@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { api, type Role } from '../api.ts'
 
-/** Passcode screen: an old school postcard with a mid-90s desktop login window laid over its corner.
+/** Passcode screen: an old school postcard fills the screen, with a mid-90s desktop login window in the middle.
  * The postcard is a public file, the one picture shown before the passcode. */
 export default function Gate({ onEnter }: { onEnter: (role: Role) => void }) {
   const [passcode, setPasscode] = useState('')
@@ -23,14 +23,13 @@ export default function Gate({ onEnter }: { onEnter: (role: Role) => void }) {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center p-4">
-      <div className="flex w-full max-w-md flex-col items-center gap-6 lg:max-w-6xl lg:flex-row lg:gap-0">
-        <figure className="w-full -rotate-2 border-[3px] border-ink bg-white p-2 shadow-chunk-lg sm:p-3 lg:w-auto lg:flex-1">
-          <img src="/hadassim-postcard.webp" width={1400} height={972} alt="גלויה ישנה של הדסים: תלמידים בין הבניינים ועל הדשא" className="h-auto w-full" />
-          <figcaption className="marker pt-2 text-center text-lg sm:text-xl">דרישת שלום מהדסים</figcaption>
-        </figure>
-        <div className="z-10 w-full max-w-md lg:-ms-20 lg:w-[26rem] lg:shrink-0 lg:rotate-1">
-          <h1 className="heading mb-6 text-center">פגישת מחזור</h1>
+    <div className="relative flex min-h-full items-center justify-center overflow-hidden p-4">
+      <img src="/hadassim-postcard.webp" alt="" className="absolute inset-0 h-full w-full object-cover" />
+      <div className="relative flex w-full max-w-md flex-col items-center gap-5">
+        <h1 className="font-display -rotate-2 border-[3px] border-ink bg-sun px-4 py-1 text-3xl whitespace-nowrap shadow-chunk-lg sm:text-4xl">
+          פגישת מחזור <span className="text-pink">2026</span>
+        </h1>
+        <div className="w-full">
           <form onSubmit={submit} className="chunk overflow-hidden shadow-chunk-lg">
             <div className="flex items-center justify-between border-b-[3px] border-ink bg-grape px-3 py-1.5 text-white">
               <span className="pixel text-xl">HALL_PASS.EXE</span>

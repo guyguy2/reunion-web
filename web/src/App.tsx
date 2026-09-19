@@ -36,7 +36,8 @@ function Shell() {
   return (
     <div className="flex h-full flex-col">
       <header className="z-20 flex flex-wrap items-center gap-x-6 gap-y-2 border-b-[3px] border-ink bg-white px-4 py-2">
-        <NavLink to="/" className="font-display text-xl leading-none tracking-wide sm:text-2xl" style={{ textShadow: '2px 2px 0 var(--color-sun)' }}>
+        <NavLink to="/" className="flex items-center gap-2 font-display text-xl leading-none tracking-wide sm:text-2xl" style={{ textShadow: '2px 2px 0 var(--color-sun)' }}>
+          <img src="/hadassim-emblem.png" alt="" width={70} height={64} className="h-8 w-auto sm:h-10" />
           {event?.title ?? 'פגישת מחזור'}
         </NavLink>
         <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t-[3px] border-ink bg-white sm:static sm:gap-2 sm:border-0 sm:bg-transparent">
