@@ -9,7 +9,7 @@ The centerpiece is a zoomable "yearbook": the class composite posters from 1990,
 - **Passcode gate.** One shared class passcode, checked on the server. Nothing (API, pictures, uploads) is served without it. A separate admin passcode unlocks the organizer tools. Every response is `noindex`.
 - **Yearbook viewer.** OpenSeadragon deep zoom, one tab per picture, search that flies to a person, deep link per person (`/p/:id`), "through the years" strip cropped from each poster, then/now slider.
 - **Crowd-sourced names.** Unnamed faces can be named by any classmate. Claiming a profile returns a private edit link; only its hash is stored. Organizers can reset a claim.
-- **Admin ("Principal's Office").** Upload pictures (auto-tiled), auto-detect faces in the browser (MediaPipe), draw/move/delete boxes (Annotorious), assign names, add people, CSV roster import, rebuild the generated portrait wall, load demo data, wipe.
+- **Admin ("Principal's Office").** Upload pictures (auto-tiled), auto-detect faces in the browser (MediaPipe), draw/move/delete boxes (Annotorious), assign names, add people, CSV roster import, rebuild the generated portrait wall, load demo data into an empty site.
 - **Mixtape.** Persistent YouTube playlist player dressed as a cassette; it keeps playing across pages and pauses when a video starts.
 - **Videos.** Classmates paste YouTube, Instagram, Facebook or X links; each plays in place on click. Organizers' picks from `content/event.json` come first, and admins can remove any classmate's video.
 - **Memories, Event** pages driven by `content/event.json`.

@@ -230,16 +230,5 @@ export function adminRoutes(config: Config, db: Db) {
     return c.json({ ok: true })
   })
 
-  // Removes every person, scene and upload. The confirm phrase guards against accidental calls.
-  admin.post('/wipe', async (c) => {
-    const body = await c.req.json().catch(() => ({}))
-    if (body.confirm !== 'DELETE EVERYTHING') return c.json({ error: 'Confirmation phrase missing' }, 400)
-    for (const scene of listScenes(db)) deleteScene(db, config.dataDir, getScene(db, scene.id)!)
-    const people = db.prepare('SELECT then_photo, now_photo FROM people').all() as { then_photo: string | null; now_photo: string | null }[]
-    for (const p of people) (removeUpload(config.dataDir, p.then_photo), removeUpload(config.dataDir, p.now_photo))
-    db.exec('DELETE FROM tags; DELETE FROM people;')
-    return c.json({ ok: true })
-  })
-
   return admin
 }

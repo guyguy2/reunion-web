@@ -70,3 +70,14 @@ describe('admin overview', () => {
     expect(text).not.toContain('secret')
   })
 })
+
+describe('no delete-everything', () => {
+  it('has no route that wipes the whole site, even for organizers', async () => {
+    const res = await app.request('/api/admin/wipe', {
+      method: 'POST',
+      headers: { Cookie: admin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: 'DELETE EVERYTHING' }),
+    })
+    expect(res.status).toBe(404)
+  })
+})

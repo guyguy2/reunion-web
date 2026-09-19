@@ -124,7 +124,6 @@ const TABS = [
   { id: 'overview', label: 'סקירה' },
   { id: 'people', label: 'אנשים' },
   { id: 'scenes', label: 'תמונות' },
-  { id: 'danger', label: 'אזור מסוכן' },
 ] as const
 type TabId = (typeof TABS)[number]['id']
 
@@ -136,7 +135,6 @@ export default function Admin() {
   const [csv, setCsv] = useState('')
   const [newName, setNewName] = useState('')
   const [filter, setFilter] = useState('')
-  const [wipePhrase, setWipePhrase] = useState('')
   const [tab, setTab] = useState<TabId>('overview')
   const tagging = scenes.find((s) => s.id === taggingId)
 
@@ -195,6 +193,14 @@ export default function Admin() {
 
       {tab === 'scenes' && (
         <Section title="תמונות מחזור">
+          {people.length === 0 && scenes.length === 0 && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button className="btn btn-sm" disabled={busy === 'demo'} onClick={() => run('demo', () => api('/api/admin/demo', { method: 'POST' }).then(() => 'נתוני ההדגמה נטענו.'))}>
+                {busy === 'demo' ? 'טוען...' : 'טעינת נתוני הדגמה'}
+              </button>
+              <p className="text-sm opacity-70">בוגרים ותמונות מדומים, להתנסות באתר.</p>
+            </div>
+          )}
           <ul className="space-y-2">
             {scenes.map((scene) => (
               <li key={scene.id} className="flex flex-wrap items-center gap-2 rounded-lg border-[3px] border-ink p-2">
@@ -303,35 +309,6 @@ export default function Admin() {
               </li>
             ))}
           </ul>
-        </Section>
-      )}
-
-      {tab === 'danger' && (
-        <Section title="אזור מסוכן">
-          {people.length === 0 && scenes.length === 0 && (
-            <div className="flex flex-wrap items-center gap-3">
-              <button className="btn btn-sm" disabled={busy === 'demo'} onClick={() => run('demo', () => api('/api/admin/demo', { method: 'POST' }).then(() => 'נתוני ההדגמה נטענו.'))}>
-                {busy === 'demo' ? 'טוען...' : 'טעינת נתוני הדגמה'}
-              </button>
-              <p className="text-sm opacity-70">בוגרים ותמונות מדומים, להתנסות באתר.</p>
-            </div>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <input className="field max-w-xs" dir="ltr" placeholder='DELETE EVERYTHING' value={wipePhrase} onChange={(e) => setWipePhrase(e.target.value)} />
-            <button
-              className="btn btn-pink btn-sm"
-              disabled={wipePhrase !== 'DELETE EVERYTHING'}
-              onClick={() =>
-                run('wipe', async () => {
-                  await api('/api/admin/wipe', { json: { confirm: wipePhrase } })
-                  setWipePhrase('')
-                  return 'הכל נמחק.'
-                })
-              }
-            >
-              מחיקת כל האנשים והתמונות (הקלידו DELETE EVERYTHING)
-            </button>
-          </div>
         </Section>
       )}
     </div>
