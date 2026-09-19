@@ -14,8 +14,21 @@ const ATTENDING = {
   no: { text: 'לא אוכל להגיע', className: 'bg-white text-ink' },
 }
 
-export function Drawer({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+/** "side": a panel beside the zoomable class photo (desktop). "sheet": a window over the phone grid. */
+export type PanelLayout = 'side' | 'sheet'
+
+export function Drawer({ onClose, layout, children }: { onClose: () => void; layout: PanelLayout; children: ReactNode }) {
   useEscape(onClose, LAYER.drawer)
+  if (layout === 'side') {
+    return (
+      <section className="chunk absolute inset-x-2 bottom-16 z-10 max-h-[62%] overflow-y-auto p-4 shadow-chunk-lg sm:inset-x-auto sm:end-16 sm:top-3 sm:bottom-3 sm:max-h-none sm:w-96">
+        <button className="btn btn-plain btn-sm pixel absolute end-2 top-2 text-lg leading-none" onClick={onClose} aria-label="סגירה">
+          X
+        </button>
+        {children}
+      </section>
+    )
+  }
   // A sheet from the bottom on phones, a centered window on wider screens. Clicking outside closes it.
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-ink/50 sm:items-center sm:p-4" onClick={onClose}>
@@ -40,7 +53,7 @@ export function appearances(scenes: Scene[], personId: number): { scene: Scene; 
     .flatMap((scene) => scene.tags.filter((t) => t.personId === personId).slice(0, 1).map((tag) => ({ scene, tag })))
 }
 
-export function PersonPanel({ person, onClose }: { person: Person; onClose: () => void }) {
+export function PersonPanel({ person, onClose, onJump, layout }: { person: Person; onClose: () => void; onJump?: (scene: Scene) => void; layout: PanelLayout }) {
   const { scenes, me, adoptToken, reload } = useStore()
   const navigate = useNavigate()
   const [error, setError] = useState('')
@@ -63,7 +76,7 @@ export function PersonPanel({ person, onClose }: { person: Person; onClose: () =
   }
 
   return (
-    <Drawer onClose={onClose}>
+    <Drawer onClose={onClose} layout={layout}>
       <div className="flex items-start gap-4 pe-10">
         {(person.nowPhoto ?? thenSrc) && (
           <div className="polaroid w-28 shrink-0 -rotate-3 pb-2">
@@ -131,12 +144,17 @@ export function PersonPanel({ person, onClose }: { person: Person; onClose: () =
           <h3 className="label">לאורך השנים</h3>
           <div className="flex gap-3 overflow-x-auto pb-2">
             {faces.map(({ scene, tag }) => (
-              <div key={tag.id} className="polaroid w-24 shrink-0 pb-1 text-center">
+              <button
+                key={tag.id}
+                onClick={onJump && (() => onJump(scene))}
+                disabled={!onJump}
+                className="polaroid w-24 shrink-0 pb-1 text-center enabled:cursor-pointer enabled:hover:-translate-y-0.5"
+              >
                 <img src={faceUrl(tag)} alt="" className="aspect-square w-full object-cover" loading="lazy" />
                 <span className="marker block pt-1 text-xs leading-tight" dir="auto">
                   {scene.title}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -176,7 +194,7 @@ export function PersonPanel({ person, onClose }: { person: Person; onClose: () =
 }
 
 /** Shown for a face nobody has named yet. Naming it creates (or links) a profile in one step. */
-export function UnknownPanel({ tag, onClose, onNamed }: { tag: Tag; onClose: () => void; onNamed: (personId: number) => void }) {
+export function UnknownPanel({ tag, onClose, onNamed, layout }: { tag: Tag; onClose: () => void; onNamed: (personId: number) => void; layout: PanelLayout }) {
   const { people, scenes, me, adoptToken, reload } = useStore()
   const [mode, setMode] = useState<'me' | 'other' | null>(null)
   const [name, setName] = useState('')
@@ -220,7 +238,7 @@ export function UnknownPanel({ tag, onClose, onNamed }: { tag: Tag; onClose: () 
     run(async () => (await api<{ personId: number }>(`/api/tags/${tag.id}/suggest`, { json: body })).personId)
 
   return (
-    <Drawer onClose={onClose}>
+    <Drawer onClose={onClose} layout={layout}>
       <div className="flex items-center gap-4 pe-10">
         <div className="polaroid w-28 shrink-0 rotate-2 pb-2">
           <img src={faceUrl(tag)} alt="" className="aspect-square w-full object-cover" />
