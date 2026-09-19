@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { Config } from './config.ts'
-import type { Db, TagRow } from './db.ts'
+import { getCounter, type Db, type TagRow } from './db.ts'
 import { requireAdmin, type AppEnv } from './auth.ts'
 import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, readImageField, removeUpload, saveUpload } from './images.ts'
 import { getPerson, insertPerson, parseCsv, parsePersonInput, serializePerson, updatePerson } from './people.ts'
@@ -50,7 +50,10 @@ export function adminRoutes(config: Config, db: Db) {
   })
 
   admin.post('/people/:id/reset-claim', (c) => {
-    db.prepare('UPDATE people SET claimed_at = NULL, edit_token_hash = NULL WHERE id = ?').run(Number(c.req.param('id')))
+    // Signs out every device too: the code and all device keys go with the claim.
+    const id = Number(c.req.param('id'))
+    db.prepare('UPDATE people SET claimed_at = NULL, edit_token_hash = NULL, pin_hash = NULL WHERE id = ?').run(id)
+    db.prepare('DELETE FROM device_tokens WHERE person_id = ?').run(id)
     return c.json({ ok: true })
   })
 
@@ -184,6 +187,31 @@ export function adminRoutes(config: Config, db: Db) {
   admin.delete('/videos/:id', (c) => {
     const result = db.prepare('DELETE FROM videos WHERE id = ?').run(Number(c.req.param('id')))
     return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
+  })
+
+  // ---- Overview: counts only. Notes are private, so only how many, never what or from whom. ----
+  admin.get('/stats', (c) => {
+    const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n
+    return c.json({
+      people: count('SELECT COUNT(*) AS n FROM people'),
+      claimed: count('SELECT COUNT(*) AS n FROM people WHERE claimed_at IS NOT NULL'),
+      withPin: count('SELECT COUNT(*) AS n FROM people WHERE pin_hash IS NOT NULL'),
+      withNowPhoto: count('SELECT COUNT(*) AS n FROM people WHERE now_photo IS NOT NULL'),
+      inMemoriam: count('SELECT COUNT(*) AS n FROM people WHERE in_memoriam = 1'),
+      attending: {
+        yes: count("SELECT COUNT(*) AS n FROM people WHERE attending = 'yes'"),
+        maybe: count("SELECT COUNT(*) AS n FROM people WHERE attending = 'maybe'"),
+        no: count("SELECT COUNT(*) AS n FROM people WHERE attending = 'no'"),
+      },
+      faces: count("SELECT COUNT(*) AS n FROM tags JOIN scenes ON scenes.id = tags.scene_id WHERE scenes.kind = 'group'"),
+      facesNamed: count("SELECT COUNT(*) AS n FROM tags JOIN scenes ON scenes.id = tags.scene_id WHERE scenes.kind = 'group' AND tags.person_id IS NOT NULL"),
+      notes: count('SELECT COUNT(*) AS n FROM notes'),
+      notesUnread: count('SELECT COUNT(*) AS n FROM notes WHERE read_at IS NULL'),
+      feedback: count('SELECT COUNT(*) AS n FROM feedback'),
+      videos: count('SELECT COUNT(*) AS n FROM videos'),
+      tapes: count('SELECT COUNT(*) AS n FROM tapes'),
+      visits: getCounter(db, 'visits'),
+    })
   })
 
   // ---- Feedback ----

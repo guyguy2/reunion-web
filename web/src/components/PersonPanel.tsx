@@ -5,6 +5,7 @@ import { api, faceUrl, matchesPerson, type Person, type Scene, type Tag } from '
 import { useStore } from '../store.tsx'
 import ContactLinks from './ContactLinks.tsx'
 import { NoteComposer } from './Notes.tsx'
+import CodeLogin from './CodeLogin.tsx'
 import { LAYER, useEscape } from '../useEscape.ts'
 
 const ATTENDING = {
@@ -44,6 +45,7 @@ export function PersonPanel({ person, onClose }: { person: Person; onClose: () =
   const navigate = useNavigate()
   const [error, setError] = useState('')
   const [writing, setWriting] = useState(false)
+  const [signingIn, setSigningIn] = useState(false)
   const faces = appearances(scenes, person.id)
   const thenSrc = person.thenPhoto ?? (faces.length ? faceUrl(faces[faces.length - 1].tag) : null)
   const isMe = me?.id === person.id
@@ -149,6 +151,16 @@ export function PersonPanel({ person, onClose }: { person: Person; onClose: () =
           <button className="btn btn-pink w-full" onClick={claim}>
             זה הפרופיל שלי! אני רוצה לערוך אותו
           </button>
+        ) : person.claimed && !me ? (
+          signingIn ? (
+            <div className="rounded-lg border-[3px] border-ink p-3">
+              <CodeLogin person={person} />
+            </div>
+          ) : (
+            <button className="btn btn-plain w-full" onClick={() => setSigningIn(true)}>
+              זה הפרופיל שלי. כניסה עם הקוד האישי
+            </button>
+          )
         ) : null}
         {!isMe && !person.inMemoriam && (
           <button className="btn btn-plain w-full" onClick={() => setWriting(true)}>

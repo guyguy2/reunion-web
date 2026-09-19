@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { api, editToken, type Person } from '../api.ts'
+import { api, editToken, matchesPerson, type Person } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { NotesInbox } from '../components/Notes.tsx'
+import CodeLogin from '../components/CodeLogin.tsx'
 import { LAYER, useEscape } from '../useEscape.ts'
 
 type Draft = Partial<Record<'name' | 'formerName' | 'nickname' | 'email' | 'instagram' | 'linkedin' | 'facebook' | 'x' | 'website' | 'phone' | 'city' | 'bio' | 'quote', string>> & {
@@ -73,10 +74,95 @@ function PhotoField({ label, hint, src, onUpload }: { label: string; hint: strin
   )
 }
 
+/** Choosing (or changing) the personal code that signs you in on another phone or computer. */
+function PinSetter({ person }: { person: Person }) {
+  const { reload } = useStore()
+  const [pin, setPin] = useState('')
+  const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const [editing, setEditing] = useState(!person.hasPin)
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    try {
+      await api('/api/me/pin', { method: 'PUT', json: { pin } })
+      setPin('')
+      setEditing(false)
+      setStatus({ kind: 'ok', text: 'הקוד נשמר. עכשיו אפשר להיכנס מכל מכשיר.' })
+      await reload()
+    } catch (err) {
+      setStatus({ kind: 'error', text: (err as Error).message })
+    }
+  }
+
+  return (
+    <div className={`chunk space-y-2 p-4 ${person.hasPin ? '' : 'bg-sun'}`}>
+      <p className="font-bold">{person.hasPin ? 'יש לכם קוד אישי.' : 'בחרו קוד אישי'}</p>
+      <p className="text-sm">
+        בטלפון או במחשב אחר: פתחו את הפרופיל שלכם בספר המחזור, לחצו "זה הפרופיל שלי" והקלידו את הקוד. לפחות 4 תווים, מספרים או מילה. אל תשתפו אותו.
+      </p>
+      {editing ? (
+        <form onSubmit={save} className="flex gap-2">
+          <input
+            className="field"
+            type="password"
+            autoComplete="new-password"
+            dir="ltr"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            aria-label="קוד אישי"
+            placeholder="הקוד שלכם"
+          />
+          <button className="btn btn-pink shrink-0" disabled={pin.trim().length < 4}>
+            שמירה
+          </button>
+        </form>
+      ) : (
+        <button className="btn btn-plain btn-sm" onClick={() => (setEditing(true), setStatus(null))}>
+          החלפת הקוד
+        </button>
+      )}
+      {status && <p className={`text-sm font-bold ${status.kind === 'ok' ? 'text-teal' : 'text-pink'}`}>{status.text}</p>}
+    </div>
+  )
+}
+
+/** Already have a profile from another device: find your name, then type your personal code. */
+function SignIn() {
+  const { people } = useStore()
+  const [query, setQuery] = useState('')
+  const [picked, setPicked] = useState<Person | null>(null)
+  const matches = query.trim().length > 1 ? people.filter((p) => p.claimed && matchesPerson(p, query)).slice(0, 5) : []
+
+  return (
+    <div className="chunk space-y-3 bg-sun p-5">
+      <h2 className="font-display text-xl">כבר יש לכם פרופיל?</h2>
+      <p>נכנסים מטלפון או ממחשב אחר? חפשו את השם שלכם והקלידו את הקוד האישי.</p>
+      {picked ? (
+        <>
+          <CodeLogin person={picked} />
+          <button className="btn btn-plain btn-sm" onClick={() => setPicked(null)}>
+            זה לא אני
+          </button>
+        </>
+      ) : (
+        <>
+          <input className="field" type="search" dir="auto" placeholder="השם שלכם" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="השם שלכם" />
+          {matches.map((p) => (
+            <button key={p.id} className="btn btn-plain btn-sm w-full justify-start" dir="auto" onClick={() => setPicked(p)}>
+              {p.name}
+            </button>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
 function Join() {
-  const { adoptToken, reload } = useStore()
+  const { people, adoptToken, reload } = useStore()
   const [name, setName] = useState('')
   const [error, setError] = useState('')
+  const sameName = name.trim().length > 1 ? people.filter((p) => p.claimed && matchesPerson(p, name)) : []
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -92,23 +178,29 @@ function Join() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4 sm:p-8">
       <h1 className="heading">הפרופיל שלי</h1>
+      <SignIn />
       <div className="chunk space-y-3 p-5">
-        <h2 className="font-display text-xl">אפשרות 1: מצאו את עצמכם</h2>
+        <h2 className="font-display text-xl">פעם ראשונה? מצאו את עצמכם</h2>
         <p>
-          פתחו את ספר המחזור, התקרבו אל עצמכם של 1996 ולחצו על התמונה. אם מישהו כבר הוסיף את שמכם, לחצו על "זה הפרופיל שלי". אם לא, לחצו על
-          "זאת התמונה שלי!" והקלידו את שמכם.
+          פתחו את ספר המחזור ולחצו על התמונה שלכם. אם מישהו כבר הוסיף את שמכם, לחצו על "זה הפרופיל שלי". אם לא, חפשו את עצמכם בין הפנים בלי שם,
+          לחצו על "זאת התמונה שלי!" והקלידו את שמכם.
         </p>
         <Link to="/" className="btn btn-pink">
           לספר המחזור
         </Link>
       </div>
       <form onSubmit={submit} className="chunk space-y-3 p-5">
-        <h2 className="font-display text-xl">אפשרות 2: לא מופיעים באף תמונה?</h2>
+        <h2 className="font-display text-xl">לא מופיעים באף תמונה?</h2>
         <p>פספסתם את יום הצילומים? הוסיפו את עצמכם בכל זאת.</p>
         <label className="label" htmlFor="join-name">
           השם שלך
         </label>
         <input id="join-name" className="field" dir="auto" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
+        {sameName.length > 0 && (
+          <p className="rounded-lg border-[3px] border-ink bg-sun p-3 text-sm font-bold">
+            כבר יש פרופיל בשם {sameName.map((p) => p.name).join(', ')}. אם זה אתם, אל תיצרו פרופיל חדש: היכנסו עם הקוד האישי למעלה.
+          </p>
+        )}
         {error && <p className="font-bold text-pink">{error}</p>}
         <button className="btn" disabled={name.trim().length < 2}>
           יצירת הפרופיל שלי
@@ -205,10 +297,13 @@ export default function Me() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4 pb-28 sm:p-8 sm:pb-28">
       <h1 className="heading">הפרופיל שלי</h1>
+      {search.get('welcome') && <p className="text-lg font-bold">ברוכים הבאים!</p>}
 
-      <div className="chunk space-y-2 bg-sun p-4">
-        <p className="font-bold">{search.get('welcome') ? 'ברוכים הבאים! ' : ''}שמרו את קישור העריכה הפרטי שלכם.</p>
-        <p className="text-sm">הדפדפן הזה יזכור אתכם, אבל הקישור שלמטה הוא הדרך היחידה לערוך את הפרופיל ממכשיר אחר. אל תשתפו אותו.</p>
+      <PinSetter key={String(me.hasPin)} person={me} />
+
+      <div className="chunk space-y-2 p-4">
+        <p className="font-bold">קישור העריכה הפרטי שלכם</p>
+        <p className="text-sm">הדפדפן הזה יזכור אתכם. הקישור שלמטה הוא עוד דרך להיכנס ממכשיר אחר, גם בלי קוד. אל תשתפו אותו.</p>
         <div className="flex gap-2">
           <input className="field pixel text-lg" dir="ltr" readOnly value={editLink} onFocus={(e) => e.target.select()} aria-label="קישור עריכה פרטי" />
           <button className="btn btn-plain shrink-0" onClick={() => navigator.clipboard.writeText(editLink).then(() => setCopied(true))}>

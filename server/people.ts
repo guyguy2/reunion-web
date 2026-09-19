@@ -45,6 +45,7 @@ export function serializePerson(row: PersonRow, view: View) {
     attending: row.attending,
     inMemoriam: Boolean(row.in_memoriam),
     claimed: Boolean(row.claimed_at),
+    hasPin: Boolean(row.pin_hash),
     ...(full
       ? {
           showEmail: Boolean(row.show_email),

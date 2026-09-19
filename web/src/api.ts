@@ -20,6 +20,8 @@ export interface Person {
   attending: 'yes' | 'no' | 'maybe' | null
   inMemoriam: boolean
   claimed: boolean
+  /** Whether the owner has chosen a personal code for signing in on other devices. */
+  hasPin: boolean
   showEmail?: boolean
   showInstagram?: boolean
   showLinkedin?: boolean

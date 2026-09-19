@@ -32,6 +32,7 @@ export interface PersonRow {
   show_x: number
   claimed_at: string | null
   edit_token_hash: string | null
+  pin_hash: string | null
 }
 
 export interface SceneRow {
@@ -203,6 +204,14 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX notes_recipient ON notes(recipient_id);
+  `,
+  `
+  ALTER TABLE people ADD COLUMN pin_hash TEXT;
+  CREATE TABLE device_tokens (
+    token_hash TEXT PRIMARY KEY,
+    person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
   `,
 ]
 

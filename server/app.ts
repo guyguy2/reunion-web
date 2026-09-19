@@ -12,7 +12,9 @@ import {
   readRole,
   requireSession,
   roleForPasscode,
+  hashPin,
   sha256,
+  verifyPin,
   startSession,
   type AppEnv,
 } from './auth.ts'
@@ -190,12 +192,47 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
     return c.json({ token })
   })
 
-  // ---- Owner routes: authenticated by the private edit token ----
+  // Signing in on another phone or computer with the personal code. Each device gets its own key,
+  // so signing in here never logs out the others. Wrong guesses are limited per device and per profile.
+  app.post('/api/people/:id/login', async (c) => {
+    const person = getPerson(db, Number(c.req.param('id')))
+    const keys = [clientKey(c), `person:${person?.id}`]
+    if (keys.some((k) => limiter.blocked(k))) return c.json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.' }, 429)
+    const body = await c.req.json().catch(() => ({}))
+    if (!person?.pin_hash) return c.json({ error: 'לפרופיל הזה עדיין אין קוד. פתחו את קישור העריכה או בקשו מהמארגנים לאפס אותו.' }, 400)
+    if (typeof body.pin !== 'string' || !verifyPin(body.pin, person.pin_hash)) {
+      keys.forEach((k) => limiter.fail(k))
+      return c.json({ error: 'הקוד לא נכון' }, 401)
+    }
+    keys.forEach((k) => limiter.clear(k))
+    const token = newEditToken()
+    db.prepare('INSERT INTO device_tokens (token_hash, person_id) VALUES (?, ?)').run(sha256(token), person.id)
+    return c.json({ token })
+  })
+
+  // ---- Owner routes: authenticated by the private edit token, or a device key from signing in with the code ----
   const owner = (c: Context): PersonRow | undefined => {
     const token = c.req.header('x-edit-token')
     if (!token) return undefined
-    return db.prepare('SELECT * FROM people WHERE edit_token_hash = ?').get(sha256(token)) as PersonRow | undefined
+    return db
+      .prepare(
+        `SELECT * FROM people WHERE edit_token_hash = ?1
+         OR id = (SELECT person_id FROM device_tokens WHERE token_hash = ?1)`,
+      )
+      .get(sha256(token)) as PersonRow | undefined
   }
+
+  app.put('/api/me/pin', async (c) => {
+    const me = owner(c)
+    if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
+    const body = await c.req.json().catch(() => ({}))
+    try {
+      updatePerson(db, me.id, { pin_hash: hashPin(typeof body.pin === 'string' ? body.pin : '') })
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+    return c.json(serializePerson(getPerson(db, me.id)!, 'full'))
+  })
 
   app.get('/api/me', (c) => {
     const me = owner(c)
@@ -266,9 +303,10 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
     removeUpload(config.dataDir, me.now_photo)
     updatePerson(db, me.id, {
       nickname: null, email: null, instagram: null, linkedin: null, facebook: null, website: null, phone: null, x: null, city: null, bio: null, quote: null,
-      now_photo: null, attending: null, claimed_at: null, edit_token_hash: null,
+      now_photo: null, attending: null, claimed_at: null, edit_token_hash: null, pin_hash: null,
     })
     db.prepare('DELETE FROM notes WHERE recipient_id = ?').run(me.id)
+    db.prepare('DELETE FROM device_tokens WHERE person_id = ?').run(me.id)
     return c.json({ ok: true })
   })
 

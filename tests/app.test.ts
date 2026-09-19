@@ -474,3 +474,44 @@ describe('notes', () => {
     expect(await (await app.request('/api/me/notes', { headers: asRecipient })).json()).toMatchObject([{ id: signed.id, read: true }])
   })
 })
+
+describe('personal code sign-in', () => {
+  it('lets the owner set a code, then sign in on another device without logging out the first', async () => {
+    const created = await app.request('/api/people', json('POST', { name: 'Code Person' }, { Cookie: member }))
+    const { token: desktop, person } = await created.json()
+    const asDesktop = { Cookie: member, 'x-edit-token': desktop }
+
+    expect((await app.request('/api/me/pin', json('PUT', { pin: '123456' }, { Cookie: member }))).status).toBe(403)
+    expect((await app.request('/api/me/pin', json('PUT', { pin: '12' }, asDesktop))).status).toBe(400)
+    const set = await app.request('/api/me/pin', json('PUT', { pin: ' 123456 ' }, asDesktop))
+    expect(await set.json()).toMatchObject({ hasPin: true })
+
+    const people = await (await app.request('/api/people', { headers: { Cookie: member } })).text()
+    expect(people).not.toContain('pin_hash')
+    expect(JSON.parse(people).find((p: { id: number }) => p.id === person.id)).toMatchObject({ hasPin: true })
+
+    const login = (pin: string, ip: string) => app.request(`/api/people/${person.id}/login`, json('POST', { pin }, { Cookie: member, 'x-real-ip': ip }))
+    expect((await login('654321', '10.7.0.1')).status).toBe(401)
+    const ok = await login('123456', '10.7.0.2')
+    expect(ok.status).toBe(200)
+    const { token: phone } = await ok.json()
+
+    expect((await (await app.request('/api/me', { headers: { Cookie: member, 'x-edit-token': phone } })).json()).id).toBe(person.id)
+    expect((await app.request('/api/me', { headers: asDesktop })).status).toBe(200)
+
+    // An organizer reset signs out every device and clears the code.
+    await app.request(`/api/admin/people/${person.id}/reset-claim`, { method: 'POST', headers: { Cookie: admin } })
+    expect((await app.request('/api/me', { headers: { Cookie: member, 'x-edit-token': phone } })).status).toBe(403)
+    expect((await login('123456', '10.7.0.3')).status).toBe(400)
+  })
+
+  it('stops guessing a profile code after 10 wrong tries, even from different addresses', async () => {
+    const created = await app.request('/api/people', json('POST', { name: 'Guess Target' }, { Cookie: member }))
+    const { token, person } = await created.json()
+    await app.request('/api/me/pin', json('PUT', { pin: '9999' }, { Cookie: member, 'x-edit-token': token }))
+
+    const login = (pin: string, ip: string) => app.request(`/api/people/${person.id}/login`, json('POST', { pin }, { Cookie: member, 'x-real-ip': ip }))
+    for (let i = 0; i < 10; i++) expect((await login(String(1000 + i), `10.8.0.${i}`)).status).toBe(401)
+    expect((await login('9999', '10.8.1.1')).status).toBe(429)
+  })
+})

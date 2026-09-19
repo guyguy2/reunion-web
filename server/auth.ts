@@ -19,6 +19,25 @@ function safeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(Buffer.from(sha256(a), 'hex'), Buffer.from(sha256(b), 'hex'))
 }
 
+const PIN_MIN = 4
+const PIN_MAX = 40
+
+/** A personal code for signing in on another device. Stored as salted scrypt, never as the code itself. */
+export function hashPin(pin: string): string {
+  const code = pin.trim()
+  if (code.length < PIN_MIN) throw new Error(`הקוד צריך להיות לפחות ${PIN_MIN} תווים`)
+  if (code.length > PIN_MAX) throw new Error('הקוד ארוך מדי')
+  const salt = crypto.randomBytes(16).toString('hex')
+  return `${salt}:${crypto.scryptSync(code, salt, 32).toString('hex')}`
+}
+
+export function verifyPin(pin: string, stored: string | null): boolean {
+  if (!stored) return false
+  const [salt, hash] = stored.split(':')
+  const attempt = crypto.scryptSync(pin.trim(), salt, 32)
+  return crypto.timingSafeEqual(attempt, Buffer.from(hash, 'hex'))
+}
+
 export function newEditToken(): string {
   return crypto.randomBytes(24).toString('base64url')
 }
