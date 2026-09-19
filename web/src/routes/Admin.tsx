@@ -318,12 +318,6 @@ export default function Admin() {
                     {p.email ? `, ${p.email}` : ''}
                   </span>
                 </span>
-                <button
-                  className="btn btn-plain btn-sm"
-                  onClick={() => run('memoriam', () => api(`/api/admin/people/${p.id}`, { method: 'PATCH', json: { inMemoriam: !p.inMemoriam } }).then(() => {}))}
-                >
-                  {p.inMemoriam ? 'ביטול סימון ז״ל' : 'סימון ז״ל'}
-                </button>
                 {p.claimed && (
                   <ConfirmButton label="איפוס בעלות" confirmLabel="לאפס" onConfirm={() => run('reset', () => api(`/api/admin/people/${p.id}/reset-claim`, { method: 'POST' }).then(() => 'הבעלות אופסה. קישור העריכה הישן כבר לא עובד.'))} />
                 )}
