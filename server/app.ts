@@ -23,6 +23,8 @@ import { adminRoutes } from './admin.ts'
 import { albumPhotos } from './album.ts'
 import { addTape, listTapes } from './tapes.ts'
 import { addVideo, listVideos } from './videos.ts'
+import { addFeedback, resendSender } from './feedback.ts'
+import { deleteNote, listNotes, markNoteRead, sendNote, unreadNotes } from './notes.ts'
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -144,6 +146,16 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
     }
   })
 
+  // Feedback to the organizers: saved, then emailed when email is configured.
+  const sendFeedback = resendSender(config)
+  app.post('/api/feedback', async (c) => {
+    try {
+      return c.json(await addFeedback(db, await c.req.json().catch(() => null), sendFeedback), 201)
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+  })
+
   app.get('/api/people', (c) => {
     const view = c.get('role') === 'admin' ? 'full' : 'public'
     return c.json(listPeople(db).map((p) => serializePerson(p, view)))
@@ -188,7 +200,35 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
   app.get('/api/me', (c) => {
     const me = owner(c)
     if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
-    return c.json(serializePerson(me, 'full'))
+    return c.json({ ...serializePerson(me, 'full'), unreadNotes: unreadNotes(db, me.id) })
+  })
+
+  // Notes: passed privately to one classmate. Only the recipient can read or throw them away.
+  app.post('/api/notes', async (c) => {
+    try {
+      sendNote(db, await c.req.json().catch(() => null), owner(c))
+      return c.json({ ok: true }, 201)
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+  })
+
+  app.get('/api/me/notes', (c) => {
+    const me = owner(c)
+    if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
+    return c.json(listNotes(db, me.id))
+  })
+
+  app.post('/api/me/notes/:id/read', (c) => {
+    const me = owner(c)
+    if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
+    return markNoteRead(db, me.id, Number(c.req.param('id'))) ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
+  })
+
+  app.delete('/api/me/notes/:id', (c) => {
+    const me = owner(c)
+    if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
+    return deleteNote(db, me.id, Number(c.req.param('id'))) ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
   })
 
   app.patch('/api/me', async (c) => {
@@ -219,7 +259,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
     return c.json(serializePerson(getPerson(db, me.id)!, 'full'))
   })
 
-  // "Remove my info": wipes everything except the name, and releases the claim.
+  // "Remove my info": wipes everything except the name (notes included), and releases the claim.
   app.delete('/api/me', (c) => {
     const me = owner(c)
     if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
@@ -228,6 +268,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
       nickname: null, email: null, instagram: null, linkedin: null, facebook: null, website: null, phone: null, x: null, city: null, bio: null, quote: null,
       now_photo: null, attending: null, claimed_at: null, edit_token_hash: null,
     })
+    db.prepare('DELETE FROM notes WHERE recipient_id = ?').run(me.id)
     return c.json({ ok: true })
   })
 

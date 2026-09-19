@@ -9,6 +9,7 @@ import { openDb } from '../server/db.ts'
 import { insertPerson, parsePersonInput } from '../server/people.ts'
 import { addTape, parseTapeLink } from '../server/tapes.ts'
 import { addVideo, listVideos, parseVideoLink } from '../server/videos.ts'
+import { addFeedback, resendSender, type SendEmail } from '../server/feedback.ts'
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-test-'))
 const config: Config = {
@@ -398,5 +399,78 @@ describe('video library', () => {
     expect((await app.request(`/api/admin/videos/${video.id}`, { method: 'DELETE', headers: { Cookie: member } })).status).toBe(403)
     expect((await app.request(`/api/admin/videos/${video.id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(200)
     expect((await app.request(`/api/admin/videos/${video.id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(404)
+  })
+})
+
+describe('feedback', () => {
+  it('saves feedback from any classmate and lists it only for admins', async () => {
+    const sent = await app.request('/api/feedback', json('POST', { message: '  The mixtape skips  ', sender: 'Jenny' }, { Cookie: member }))
+    expect(sent.status).toBe(201)
+    expect(await sent.json()).toMatchObject({ message: 'The mixtape skips', sender: 'Jenny', emailed: false })
+
+    expect((await app.request('/api/feedback', json('POST', { message: '   ' }, { Cookie: member }))).status).toBe(400)
+    expect((await app.request('/api/feedback', json('POST', { message: 'hi' }, {}))).status).toBe(401)
+
+    expect((await app.request('/api/admin/feedback', { headers: { Cookie: member } })).status).toBe(403)
+    const list = await (await app.request('/api/admin/feedback', { headers: { Cookie: admin } })).json()
+    expect(list[0]).toMatchObject({ message: 'The mixtape skips', sender: 'Jenny' })
+  })
+
+  it('emails feedback with a reply-to address, and keeps it when the email fails', async () => {
+    const outbox: Parameters<SendEmail>[0][] = []
+    const ok = await addFeedback(db, { message: 'Love it', sender: 'Guy <guy@example.com>' }, async (m) => void outbox.push(m))
+    expect(ok.emailed).toBe(true)
+    expect(outbox[0]).toMatchObject({ text: expect.stringContaining('Love it'), replyTo: 'guy@example.com' })
+
+    const failed = await addFeedback(db, { message: 'Still saved' }, async () => {
+      throw new Error('down')
+    })
+    expect(failed).toMatchObject({ message: 'Still saved', sender: null, emailed: false })
+  })
+
+  it('sends through Resend only when a key and recipient are configured', async () => {
+    expect(resendSender(config)).toBeNull()
+    const calls: [string, RequestInit][] = []
+    const fakeFetch = (async (url: string, init: RequestInit) => (calls.push([url, init]), new Response('{}'))) as unknown as typeof fetch
+    const send = resendSender({ ...config, resendApiKey: 'key', feedbackTo: 'me@example.com', feedbackFrom: 'Site <a@b.dev>' }, fakeFetch)!
+    await send({ subject: 'Hi', text: 'Body' })
+    expect(calls[0][0]).toBe('https://api.resend.com/emails')
+    expect(calls[0][1].headers).toMatchObject({ Authorization: 'Bearer key' })
+    expect(JSON.parse(calls[0][1].body as string)).toEqual({ from: 'Site <a@b.dev>', to: ['me@example.com'], subject: 'Hi', text: 'Body' })
+  })
+})
+
+describe('notes', () => {
+  it('delivers signed and anonymous notes privately, and only the recipient can read or throw them away', async () => {
+    const created = await app.request('/api/people', json('POST', { name: 'Note Sender' }, { Cookie: member }))
+    const { token: senderToken, person: sender } = await created.json()
+    const recipientRes = await app.request('/api/people', json('POST', { name: 'Note Recipient' }, { Cookie: member }))
+    const { token: recipientToken, person: recipient } = await recipientRes.json()
+    const asSender = { Cookie: member, 'x-edit-token': senderToken }
+    const asRecipient = { Cookie: member, 'x-edit-token': recipientToken }
+
+    expect((await app.request('/api/notes', json('POST', { to: recipient.id, message: 'Signed hello' }, asSender))).status).toBe(201)
+    expect((await app.request('/api/notes', json('POST', { to: recipient.id, message: 'Guess who', anonymous: true }, { Cookie: member }))).status).toBe(201)
+    // Signing needs a profile; writing to yourself or with nothing to say is refused.
+    expect((await app.request('/api/notes', json('POST', { to: recipient.id, message: 'Hi' }, { Cookie: member }))).status).toBe(400)
+    expect((await app.request('/api/notes', json('POST', { to: sender.id, message: 'Me' }, asSender))).status).toBe(400)
+    expect((await app.request('/api/notes', json('POST', { to: recipient.id, message: '  ' }, asSender))).status).toBe(400)
+
+    expect((await (await app.request('/api/me', { headers: asRecipient })).json()).unreadNotes).toBe(2)
+    const notes = await (await app.request('/api/me/notes', { headers: asRecipient })).json()
+    expect(notes).toMatchObject([
+      { message: 'Guess who', from: null, read: false },
+      { message: 'Signed hello', from: { id: sender.id, name: 'Note Sender' }, read: false },
+    ])
+    expect(JSON.stringify(await (await app.request('/api/me/notes', { headers: asSender })).json())).not.toContain('hello')
+
+    const [anon, signed] = notes
+    // The anonymous note keeps no trace of who sent it.
+    expect({ ...db.prepare('SELECT sender_id, sender_name FROM notes WHERE id = ?').get(anon.id) }).toEqual({ sender_id: null, sender_name: null })
+    expect((await app.request(`/api/me/notes/${signed.id}/read`, { method: 'POST', headers: asSender })).status).toBe(404)
+    expect((await app.request(`/api/me/notes/${signed.id}`, { method: 'DELETE', headers: asSender })).status).toBe(404)
+    expect((await app.request(`/api/me/notes/${signed.id}/read`, { method: 'POST', headers: asRecipient })).status).toBe(200)
+    expect((await app.request(`/api/me/notes/${anon.id}`, { method: 'DELETE', headers: asRecipient })).status).toBe(200)
+    expect(await (await app.request('/api/me/notes', { headers: asRecipient })).json()).toMatchObject([{ id: signed.id, read: true }])
   })
 })

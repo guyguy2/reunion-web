@@ -72,6 +72,15 @@ export interface Video {
   url: string
 }
 
+/** A message sent through the feedback button, as organizers see it. */
+export interface FeedbackMessage {
+  id: number
+  message: string
+  sender: string | null
+  emailed: boolean
+  createdAt: string
+}
+
 export interface EventInfo {
   title: string
   tagline: string

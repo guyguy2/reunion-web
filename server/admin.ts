@@ -6,6 +6,7 @@ import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, readImageField, removeUpload, saveUp
 import { getPerson, insertPerson, parseCsv, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { addGroupScene, deleteScene, getScene, insertTag, listScenes, rebuildWall, serializeTag } from './scenes.ts'
 import { loadDemoData } from './demo.ts'
+import { listFeedback } from './feedback.ts'
 
 function parseBox(body: Record<string, unknown>) {
   const box = { x: Number(body.x), y: Number(body.y), w: Number(body.w), h: Number(body.h) }
@@ -182,6 +183,14 @@ export function adminRoutes(config: Config, db: Db) {
   // ---- Video library ----
   admin.delete('/videos/:id', (c) => {
     const result = db.prepare('DELETE FROM videos WHERE id = ?').run(Number(c.req.param('id')))
+    return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
+  })
+
+  // ---- Feedback ----
+  admin.get('/feedback', (c) => c.json(listFeedback(db)))
+
+  admin.delete('/feedback/:id', (c) => {
+    const result = db.prepare('DELETE FROM feedback WHERE id = ?').run(Number(c.req.param('id')))
     return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
   })
 

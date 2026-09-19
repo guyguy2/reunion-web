@@ -8,6 +8,10 @@ export interface Config {
   port: number
   webDir: string
   secureCookies: boolean
+  /** Feedback is emailed through Resend when both the key and the recipient are set. */
+  resendApiKey?: string
+  feedbackTo?: string
+  feedbackFrom?: string
 }
 
 function required(name: string): string {
@@ -25,5 +29,8 @@ export function loadConfig(): Config {
     port: Number(process.env.PORT ?? 3000),
     webDir: path.resolve(process.env.WEB_DIR ?? './dist/web'),
     secureCookies: process.env.NODE_ENV === 'production',
+    resendApiKey: process.env.RESEND_API_KEY,
+    feedbackTo: process.env.FEEDBACK_TO,
+    feedbackFrom: process.env.FEEDBACK_FROM ?? 'Reunion site <onboarding@resend.dev>',
   }
 }

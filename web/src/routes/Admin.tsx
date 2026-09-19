@@ -1,5 +1,5 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
-import { api } from '../api.ts'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { api, type FeedbackMessage } from '../api.ts'
 import { useStore } from '../store.tsx'
 import Tagger from './Tagger.tsx'
 
@@ -28,6 +28,38 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <h2 className="font-display text-xl">{title}</h2>
       {children}
     </section>
+  )
+}
+
+/** Everything sent through the feedback button, newest first. Also emailed when email is set up. */
+function FeedbackInbox() {
+  const [messages, setMessages] = useState<FeedbackMessage[] | null>(null)
+  const load = () => api<FeedbackMessage[]>('/api/admin/feedback').then(setMessages)
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  return (
+    <Section title={`משוב (${messages?.length ?? 0})`}>
+      <ul className="max-h-96 space-y-2 overflow-y-auto">
+        {messages?.map((m) => (
+          <li key={m.id} className="space-y-1 rounded-lg border-[3px] border-ink p-3">
+            <p className="whitespace-pre-wrap" dir="auto">
+              {m.message}
+            </p>
+            <div className="flex flex-wrap items-center gap-2 text-sm opacity-70">
+              <span className="flex-1" dir="auto">
+                {m.sender ?? 'ללא שם'}, {m.createdAt}
+                {m.emailed ? '' : ' (לא נשלח במייל)'}
+              </span>
+              <ConfirmButton label="מחיקה" confirmLabel="למחוק" onConfirm={() => api(`/api/admin/feedback/${m.id}`, { method: 'DELETE' }).then(load)} />
+            </div>
+          </li>
+        ))}
+        {messages?.length === 0 && <li>עדיין אין משוב.</li>}
+      </ul>
+    </Section>
   )
 }
 
@@ -188,6 +220,8 @@ export default function Admin() {
           ))}
         </ul>
       </Section>
+
+      <FeedbackInbox />
 
       <Section title="אזור מסוכן">
         {people.length === 0 && scenes.length === 0 && (

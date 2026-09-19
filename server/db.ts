@@ -75,6 +75,25 @@ export interface VideoRow {
   created_at: string
 }
 
+export interface FeedbackRow {
+  id: number
+  message: string
+  sender: string | null
+  emailed: number
+  created_at: string
+}
+
+/** sender_id and sender_name are both null for an anonymous note. */
+export interface NoteRow {
+  id: number
+  recipient_id: number
+  sender_id: number | null
+  sender_name: string | null
+  message: string
+  read_at: string | null
+  created_at: string
+}
+
 // Each entry runs once, in order. Append only; never edit a shipped migration.
 const MIGRATIONS: string[] = [
   `
@@ -163,6 +182,27 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE people ADD COLUMN x TEXT;
   ALTER TABLE people ADD COLUMN show_x INTEGER NOT NULL DEFAULT 1;
+  `,
+  `
+  CREATE TABLE feedback (
+    id INTEGER PRIMARY KEY,
+    message TEXT NOT NULL,
+    sender TEXT,
+    emailed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
+  `
+  CREATE TABLE notes (
+    id INTEGER PRIMARY KEY,
+    recipient_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    sender_id INTEGER REFERENCES people(id) ON DELETE SET NULL,
+    sender_name TEXT,
+    message TEXT NOT NULL,
+    read_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX notes_recipient ON notes(recipient_id);
   `,
 ]
 

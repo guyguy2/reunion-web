@@ -4,6 +4,7 @@ import { api, type Role } from './api.ts'
 import { StoreProvider, useStore } from './store.tsx'
 import Gate from './components/Gate.tsx'
 import Cassette from './components/Cassette.tsx'
+import Feedback from './components/Feedback.tsx'
 import Yearbook from './routes/Yearbook.tsx'
 import Videos from './routes/Videos.tsx'
 import Memories from './routes/Memories.tsx'
@@ -51,8 +52,11 @@ function Shell() {
             </NavLink>
           ))}
         </nav>
+        <span className="ms-auto">
+          <Feedback />
+        </span>
         <button
-          className="ms-auto cursor-pointer text-sm font-bold underline decoration-2 underline-offset-2 opacity-70 hover:opacity-100"
+          className="cursor-pointer text-sm font-bold underline decoration-2 underline-offset-2 opacity-70 hover:opacity-100"
           onClick={() => api('/api/logout', { method: 'POST' }).then(() => location.assign('/'))}
         >
           התנתקות
