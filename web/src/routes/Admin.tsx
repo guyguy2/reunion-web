@@ -78,6 +78,8 @@ interface Stats {
   feedback: number
   videos: number
   tapes: number
+  quotes: number
+  quoteComments: number
   visits: number
 }
 
@@ -114,6 +116,7 @@ function Overview() {
         <StatTile label="משוב" value={stats.feedback} />
         <StatTile label="סרטונים" value={stats.videos} />
         <StatTile label="קלטות" value={stats.tapes} />
+        <StatTile label="ציטוטים" value={stats.quotes} detail={`${stats.quoteComments} תגובות`} />
         <StatTile label="כניסות לאתר" value={stats.visits} detail="מספר ההתחברויות עם סיסמה" />
       </div>
     </Section>

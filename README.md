@@ -12,6 +12,7 @@ The centerpiece is a zoomable "yearbook": the class composite posters from 1990,
 - **Admin ("Principal's Office").** Upload pictures (auto-tiled), auto-detect faces in the browser (MediaPipe), draw/move/delete boxes (Annotorious), assign names, add people, CSV roster import, rebuild the generated portrait wall, load demo data into an empty site, download a JSON backup of every profile, picture and face tag (no image files, sign-in secrets or private notes).
 - **Mixtape.** Persistent YouTube playlist player dressed as a cassette; it keeps playing across pages and pauses when a video starts.
 - **Videos.** Classmates paste YouTube, Instagram, Facebook or X links; each plays in place on click. Organizers' picks from `content/event.json` come first, and admins can remove any classmate's video.
+- **Quotes wall ("Who said it?").** Things teachers and classmates used to say. Any classmate can add a quote (who said it and when are optional) and comment on any quote; organizers can remove quotes and comments.
 - **Memories, Event** pages driven by `content/event.json`.
 
 ## Stack

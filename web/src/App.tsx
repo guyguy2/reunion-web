@@ -8,6 +8,7 @@ import Feedback from './components/Feedback.tsx'
 import Yearbook from './routes/Yearbook.tsx'
 import Videos from './routes/Videos.tsx'
 import Memories from './routes/Memories.tsx'
+import Quotes from './routes/Quotes.tsx'
 import EventPage from './routes/EventPage.tsx'
 import Me from './routes/Me.tsx'
 import { SignInFromLink } from './components/CodeLogin.tsx'
@@ -19,6 +20,7 @@ const TABS = [
   { to: '/', label: 'ספר מחזור', color: 'bg-pink text-white' },
   { to: '/videos', label: 'סרטונים', color: 'bg-grape text-white' },
   { to: '/memories', label: 'זכרונות', color: 'bg-teal text-white' },
+  { to: '/quotes', label: 'ציטוטים', color: 'bg-tangerine text-ink' },
   { to: '/event', label: 'האירוע', color: 'bg-sun text-ink' },
   { to: '/me', label: 'הפרופיל שלי', color: 'bg-sky text-ink' },
 ]
@@ -79,6 +81,7 @@ function Shell() {
               <Route path="/p/:personId" element={<Yearbook />} />
               <Route path="/videos" element={<Videos />} />
               <Route path="/memories" element={<Memories />} />
+              <Route path="/quotes" element={<Quotes />} />
               <Route path="/event" element={<EventPage />} />
               <Route path="/me" element={<Me />} />
               <Route path="/me/:token" element={<Me />} />

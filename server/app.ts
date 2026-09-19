@@ -25,6 +25,7 @@ import { adminRoutes } from './admin.ts'
 import { albumPhotos } from './album.ts'
 import { addTape, listTapes } from './tapes.ts'
 import { addVideo, listVideos } from './videos.ts'
+import { addQuote, addQuoteComment, listQuotes } from './quotes.ts'
 import { addFeedback, resendSender } from './feedback.ts'
 import { resendMailer, type Mailer } from './email.ts'
 import { redeemSignInLink, sendSignInLink } from './recovery.ts'
@@ -145,6 +146,25 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   app.post('/api/videos', async (c) => {
     try {
       return c.json(await addVideo(db, await c.req.json().catch(() => null)), 201)
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+  })
+
+  // The quotes wall: things teachers and classmates used to say. Anyone can add one or comment; organizers remove.
+  app.get('/api/quotes', (c) => c.json(listQuotes(db)))
+
+  app.post('/api/quotes', async (c) => {
+    try {
+      return c.json(addQuote(db, await c.req.json().catch(() => null)), 201)
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+  })
+
+  app.post('/api/quotes/:id/comments', async (c) => {
+    try {
+      return c.json(addQuoteComment(db, Number(c.req.param('id')), await c.req.json().catch(() => null)), 201)
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }

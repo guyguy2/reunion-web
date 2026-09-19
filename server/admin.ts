@@ -190,6 +190,17 @@ export function adminRoutes(config: Config, db: Db) {
     return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
   })
 
+  // ---- Quotes wall. Removing a quote removes its comments too. ----
+  admin.delete('/quotes/:id', (c) => {
+    const result = db.prepare('DELETE FROM quotes WHERE id = ?').run(Number(c.req.param('id')))
+    return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
+  })
+
+  admin.delete('/quote-comments/:id', (c) => {
+    const result = db.prepare('DELETE FROM quote_comments WHERE id = ?').run(Number(c.req.param('id')))
+    return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
+  })
+
   // ---- Overview: counts only. Notes are private, so only how many, never what or from whom. ----
   admin.get('/stats', (c) => {
     const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n
@@ -211,6 +222,8 @@ export function adminRoutes(config: Config, db: Db) {
       feedback: count('SELECT COUNT(*) AS n FROM feedback'),
       videos: count('SELECT COUNT(*) AS n FROM videos'),
       tapes: count('SELECT COUNT(*) AS n FROM tapes'),
+      quotes: count('SELECT COUNT(*) AS n FROM quotes'),
+      quoteComments: count('SELECT COUNT(*) AS n FROM quote_comments'),
       visits: getCounter(db, 'visits'),
     })
   })

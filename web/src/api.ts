@@ -76,6 +76,25 @@ export interface Video {
   url: string
 }
 
+/** A comment under a quote. */
+export interface QuoteComment {
+  id: number
+  message: string
+  addedBy: string | null
+  createdAt: string
+}
+
+/** Something a teacher or classmate used to say, with the comments under it. */
+export interface Quote {
+  id: number
+  text: string
+  saidBy: string | null
+  context: string | null
+  addedBy: string | null
+  createdAt: string
+  comments: QuoteComment[]
+}
+
 /** A note passed to you. `from` is null when it was sent anonymously. */
 export interface Note {
   id: number

@@ -433,6 +433,41 @@ describe('video library', () => {
   })
 })
 
+describe('quotes wall', () => {
+  it('lets any classmate add a quote and comment on it, rejects empty ones, and only organizers remove them', async () => {
+    expect((await app.request('/api/quotes')).status).toBe(401)
+    const added = await app.request(
+      '/api/quotes',
+      json('POST', { text: '  Take out a sheet of paper  ', saidBy: 'Mrs. Levin', context: 'Every Monday', addedBy: 'Jenny' }, { Cookie: member }),
+    )
+    expect(added.status).toBe(201)
+    const quote = await added.json()
+    expect(quote).toMatchObject({ text: 'Take out a sheet of paper', saidBy: 'Mrs. Levin', context: 'Every Monday', addedBy: 'Jenny', comments: [] })
+
+    expect((await app.request('/api/quotes', json('POST', { text: '   ' }, { Cookie: member }))).status).toBe(400)
+    expect((await app.request('/api/quotes', json('POST', { text: 'x'.repeat(501) }, { Cookie: member }))).status).toBe(400)
+
+    const commented = await app.request(`/api/quotes/${quote.id}/comments`, json('POST', { message: 'Also on Thursdays', addedBy: 'Guy' }, { Cookie: member }))
+    expect(commented.status).toBe(201)
+    const comment = await commented.json()
+    expect((await app.request(`/api/quotes/${quote.id}/comments`, json('POST', { message: '' }, { Cookie: member }))).status).toBe(400)
+    expect((await app.request('/api/quotes/99999/comments', json('POST', { message: 'hi' }, { Cookie: member }))).status).toBe(400)
+
+    const list = await (await app.request('/api/quotes', { headers: { Cookie: member } })).json()
+    expect(list.find((q: { id: number }) => q.id === quote.id).comments).toMatchObject([{ message: 'Also on Thursdays', addedBy: 'Guy' }])
+
+    expect((await app.request(`/api/admin/quote-comments/${comment.id}`, { method: 'DELETE', headers: { Cookie: member } })).status).toBe(403)
+    expect((await app.request(`/api/admin/quote-comments/${comment.id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(200)
+    expect((await app.request(`/api/admin/quotes/${quote.id}`, { method: 'DELETE', headers: { Cookie: member } })).status).toBe(403)
+
+    // Removing a quote takes its comments with it.
+    await app.request(`/api/quotes/${quote.id}/comments`, json('POST', { message: 'Still here?' }, { Cookie: member }))
+    expect((await app.request(`/api/admin/quotes/${quote.id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(200)
+    expect((await app.request(`/api/admin/quotes/${quote.id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(404)
+    expect(db.prepare('SELECT COUNT(*) AS n FROM quote_comments WHERE quote_id = ?').get(quote.id)).toEqual({ n: 0 })
+  })
+})
+
 describe('feedback', () => {
   it('saves feedback from any classmate and lists it only for admins', async () => {
     const sent = await app.request('/api/feedback', json('POST', { message: '  The mixtape skips  ', sender: 'Jenny' }, { Cookie: member }))

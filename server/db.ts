@@ -84,6 +84,23 @@ export interface FeedbackRow {
   created_at: string
 }
 
+export interface QuoteRow {
+  id: number
+  text: string
+  said_by: string | null
+  context: string | null
+  added_by: string | null
+  created_at: string
+}
+
+export interface QuoteCommentRow {
+  id: number
+  quote_id: number
+  message: string
+  added_by: string | null
+  created_at: string
+}
+
 /** sender_id and sender_name are both null for an anonymous note. */
 export interface NoteRow {
   id: number
@@ -220,6 +237,24 @@ const MIGRATIONS: string[] = [
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  `,
+  `
+  CREATE TABLE quotes (
+    id INTEGER PRIMARY KEY,
+    text TEXT NOT NULL,
+    said_by TEXT,
+    context TEXT,
+    added_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE quote_comments (
+    id INTEGER PRIMARY KEY,
+    quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    added_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX quote_comments_quote ON quote_comments(quote_id);
   `,
 ]
 
