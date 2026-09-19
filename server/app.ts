@@ -362,6 +362,22 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     return c.json(serializeTag(tag))
   })
 
+  // "That's not me": the owner puts a face tagged as them back to unnamed, whoever tagged it.
+  // Class photos only; the generated wall always shows everyone.
+  app.delete('/api/tags/:id/identify', (c) => {
+    const me = owner(c)
+    if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
+    const tagId = Number(c.req.param('id'))
+    const result = db
+      .prepare(
+        `UPDATE tags SET person_id = NULL
+         WHERE id = ? AND person_id = ? AND scene_id IN (SELECT id FROM scenes WHERE kind = 'group')`,
+      )
+      .run(tagId, me.id)
+    if (result.changes === 0) return c.json({ error: 'התמונה הזו לא מתויגת בשם שלך' }, 404)
+    return c.json(serializeTag(db.prepare('SELECT * FROM tags WHERE id = ?').get(tagId) as unknown as TagRow))
+  })
+
   // "I know who this is": any classmate can name an unidentified face, either as an existing
   // person or as a new, unclaimed profile. Organizers can correct mistakes from the admin page.
   app.post('/api/tags/:id/suggest', async (c) => {

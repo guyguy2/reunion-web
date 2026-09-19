@@ -120,6 +120,20 @@ function Overview() {
   )
 }
 
+/** A plain link: the browser saves the file itself, using the session cookie. */
+function Backup() {
+  return (
+    <Section title="גיבוי">
+      <div className="flex flex-wrap items-center gap-3">
+        <a className="btn btn-sm" href="/api/admin/export" download>
+          הורדת גיבוי
+        </a>
+        <p className="text-sm opacity-70">קובץ JSON עם כל הפרופילים, התמונות הקבוצתיות וכל תיוגי הפנים. בלי קבצי התמונות עצמם, בלי קודים אישיים ובלי פתקים.</p>
+      </div>
+    </Section>
+  )
+}
+
 const TABS = [
   { id: 'overview', label: 'סקירה' },
   { id: 'people', label: 'אנשים' },
@@ -187,6 +201,7 @@ export default function Admin() {
       {tab === 'overview' && (
         <>
           <Overview />
+          <Backup />
           <FeedbackInbox />
         </>
       )}

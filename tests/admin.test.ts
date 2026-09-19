@@ -71,6 +71,35 @@ describe('admin overview', () => {
   })
 })
 
+describe('backup export', () => {
+  it('is for organizers only', async () => {
+    expect((await app.request('/api/admin/export', { headers: { Cookie: member } })).status).toBe(403)
+  })
+
+  it('downloads every profile, picture and face tag, without sign-in secrets or notes', async () => {
+    const owner = insertPerson(db, { name: 'Backup Owner', email: 'owner@example.com', edit_token_hash: 'edit-hash', pin_hash: 'pin-salt:pin-hash' })
+    const scene = Number(
+      db.prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path) VALUES ('prom', 'Prom', 'group', 600, 400, 'scenes/prom')`).run().lastInsertRowid,
+    )
+    db.prepare('INSERT INTO tags (scene_id, person_id, x, y, w, h) VALUES (?, ?, 1, 2, 3, 4), (?, NULL, 5, 6, 7, 8)').run(scene, owner, scene)
+    db.prepare('INSERT INTO device_tokens (token_hash, person_id) VALUES (?, ?)').run('device-hash', owner)
+
+    const res = await app.request('/api/admin/export', { headers: { Cookie: admin } })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-disposition')).toMatch(/^attachment; filename="reunion-backup-\d{4}-\d{2}-\d{2}\.json"$/)
+    const text = await res.text()
+    const backup = JSON.parse(text)
+    expect(backup.people.find((p: { id: number }) => p.id === owner)).toMatchObject({ name: 'Backup Owner', email: 'owner@example.com' })
+    expect(backup.people.length).toBe((db.prepare('SELECT COUNT(*) AS n FROM people').get() as { n: number }).n)
+    expect(backup.scenes).toEqual([expect.objectContaining({ id: scene, title: 'Prom', kind: 'group' })])
+    expect(backup.tags).toEqual([
+      expect.objectContaining({ scene_id: scene, person_id: owner, x: 1, y: 2, w: 3, h: 4 }),
+      expect.objectContaining({ scene_id: scene, person_id: null }),
+    ])
+    for (const secret of ['edit-hash', 'pin-hash', 'device-hash', 'edit_token_hash', 'pin_hash', 'secret']) expect(text).not.toContain(secret)
+  })
+})
+
 describe('no delete-everything', () => {
   it('has no route that wipes the whole site, even for organizers', async () => {
     const res = await app.request('/api/admin/wipe', {

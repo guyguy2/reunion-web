@@ -215,6 +215,23 @@ export function adminRoutes(config: Config, db: Db) {
     })
   })
 
+  // ---- Backup: every profile, picture and face tag as one JSON download. Photos are not included,
+  // and neither are sign-in secrets or private notes. ----
+  admin.get('/export', (c) => {
+    const people = (db.prepare('SELECT * FROM people ORDER BY id').all() as Record<string, unknown>[]).map(
+      ({ edit_token_hash, pin_hash, ...person }) => person,
+    )
+    const exportedAt = new Date().toISOString()
+    c.header('Content-Disposition', `attachment; filename="reunion-backup-${exportedAt.slice(0, 10)}.json"`)
+    return c.json({
+      exportedAt,
+      schemaVersion: (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
+      people,
+      scenes: db.prepare('SELECT * FROM scenes ORDER BY id').all(),
+      tags: db.prepare('SELECT * FROM tags ORDER BY id').all(),
+    })
+  })
+
   // ---- Feedback ----
   admin.get('/feedback', (c) => c.json(listFeedback(db)))
 

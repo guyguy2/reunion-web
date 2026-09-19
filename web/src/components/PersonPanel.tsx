@@ -54,7 +54,7 @@ export function appearances(scenes: Scene[], personId: number): { scene: Scene; 
 }
 
 export function PersonPanel({ person, onClose, onJump, layout }: { person: Person; onClose: () => void; onJump?: (scene: Scene) => void; layout: PanelLayout }) {
-  const { scenes, me, adoptToken, reload } = useStore()
+  const { scenes, me, role, adoptToken, reload } = useStore()
   const navigate = useNavigate()
   const [error, setError] = useState('')
   const [writing, setWriting] = useState(false)
@@ -64,6 +64,22 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
   const faces = appearances(scenes, person.id)
   const thenSrc = person.thenPhoto ?? (faces.length ? faceUrl(faces[faces.length - 1].tag) : null)
   const isMe = me?.id === person.id
+  // Owners can take their name off a wrongly tagged face; organizers can do it for anyone.
+  const canUntag = isMe || role === 'admin'
+  const [untagging, setUntagging] = useState<number | null>(null)
+
+  /** Puts the face back to unnamed, so anyone can name it again. */
+  async function untag(tag: Tag) {
+    setUntagging(null)
+    setError('')
+    try {
+      if (isMe) await api(`/api/tags/${tag.id}/identify`, { method: 'DELETE' })
+      else await api(`/api/admin/tags/${tag.id}`, { method: 'PATCH', json: { personId: null } })
+      await reload()
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
 
   async function claim() {
     setError('')
@@ -146,17 +162,33 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
           <h3 className="label">לאורך השנים</h3>
           <div className="flex gap-3 overflow-x-auto pb-2">
             {faces.map(({ scene, tag }) => (
-              <button
-                key={tag.id}
-                onClick={onJump && (() => onJump(scene))}
-                disabled={!onJump}
-                className="polaroid w-24 shrink-0 pb-1 text-center enabled:cursor-pointer enabled:hover:-translate-y-0.5"
-              >
-                <img src={faceUrl(tag)} alt="" className="aspect-square w-full object-cover" loading="lazy" />
-                <span className="marker block pt-1 text-xs leading-tight" dir="auto">
-                  {scene.title}
-                </span>
-              </button>
+              <div key={tag.id} className="flex w-24 shrink-0 flex-col gap-1">
+                <button
+                  onClick={onJump && (() => onJump(scene))}
+                  disabled={!onJump}
+                  className="polaroid w-full pb-1 text-center enabled:cursor-pointer enabled:hover:-translate-y-0.5"
+                >
+                  <img src={faceUrl(tag)} alt="" className="aspect-square w-full object-cover" loading="lazy" />
+                  <span className="marker block pt-1 text-xs leading-tight" dir="auto">
+                    {scene.title}
+                  </span>
+                </button>
+                {canUntag &&
+                  (untagging === tag.id ? (
+                    <>
+                      <button className="btn btn-pink btn-sm w-full px-1 text-xs" onClick={() => untag(tag)}>
+                        כן, להסיר
+                      </button>
+                      <button className="btn btn-plain btn-sm w-full px-1 text-xs" onClick={() => setUntagging(null)}>
+                        ביטול
+                      </button>
+                    </>
+                  ) : (
+                    <button className="btn btn-plain btn-sm w-full px-1 text-xs" onClick={() => setUntagging(tag.id)}>
+                      {isMe ? 'זה לא אני' : 'הסרת התיוג'}
+                    </button>
+                  ))}
+              </div>
             ))}
           </div>
         </div>

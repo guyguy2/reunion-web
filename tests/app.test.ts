@@ -225,6 +225,36 @@ describe('admin', () => {
     expect(again.status).toBe(409)
   })
 
+  it('lets the owner take their name off a face, and nobody else', async () => {
+    const scenes = await (await app.request('/api/scenes', { headers: { Cookie: member } })).json()
+    const group = scenes.find((s: { kind: string }) => s.kind === 'group')
+    const { id: tagId } = await (await app.request(`/api/admin/scenes/${group.id}/tags`, json('POST', { x: 200, y: 200, w: 50, h: 60 }, { Cookie: admin }))).json()
+    const { token } = await (await app.request('/api/people', json('POST', { name: 'Wrong Face' }, { Cookie: member }))).json()
+    const { token: other } = await (await app.request('/api/people', json('POST', { name: 'Someone Else' }, { Cookie: member }))).json()
+    await app.request(`/api/tags/${tagId}/identify`, { method: 'POST', headers: { Cookie: member, 'x-edit-token': token } })
+    const untag = (headers: Record<string, string>) => app.request(`/api/tags/${tagId}/identify`, { method: 'DELETE', headers: { Cookie: member, ...headers } })
+
+    expect((await untag({})).status).toBe(403)
+    expect((await untag({ 'x-edit-token': other })).status).toBe(404)
+    const mine = await untag({ 'x-edit-token': token })
+    expect(mine.status).toBe(200)
+    expect(await mine.json()).toMatchObject({ id: tagId, personId: null })
+    expect((await untag({ 'x-edit-token': token })).status).toBe(404)
+
+    // Back to unnamed, so the right person can be named on it.
+    const renamed = await app.request(`/api/tags/${tagId}/suggest`, json('POST', { name: 'Right Face' }, { Cookie: member }))
+    expect(renamed.status).toBe(200)
+  })
+
+  it('does not let an owner remove themselves from the generated wall', async () => {
+    const wall = (await (await app.request('/api/scenes', { headers: { Cookie: member } })).json()).find((s: { kind: string }) => s.kind === 'mosaic')
+    const { token } = await (await app.request('/api/people', json('POST', { name: 'On The Wall' }, { Cookie: member }))).json()
+    const me = await (await app.request('/api/me', { headers: { Cookie: member, 'x-edit-token': token } })).json()
+    const { lastInsertRowid } = db.prepare('INSERT INTO tags (scene_id, person_id, x, y, w, h) VALUES (?, ?, 0, 0, 10, 10)').run(wall.id, me.id)
+    const res = await app.request(`/api/tags/${lastInsertRowid}/identify`, { method: 'DELETE', headers: { Cookie: member, 'x-edit-token': token } })
+    expect(res.status).toBe(404)
+  })
+
   it('lets classmates name an unidentified face once, and serves a gated face crop', async () => {
     const scenes = await (await app.request('/api/scenes', { headers: { Cookie: member } })).json()
     const group = scenes.find((s: { kind: string }) => s.kind === 'group')
