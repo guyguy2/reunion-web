@@ -82,43 +82,57 @@ function Tape({ video, onRemove }: { video: Video; onRemove?: () => void }) {
 }
 
 /**
- * A home-recorded VHS tape for the page header, drawn in the mixtape cassette's style. What makes it read as VHS
- * rather than an audio cassette: the hinged flap along the whole front edge, big tape rolls (one full, one nearly
- * empty) on toothed hubs, the label panel in the middle and the "insert this way" arrow.
+ * A home-recorded VHS tape for the page header, drawn as a sticker: a gray shell with a ridged flap on top, the tape
+ * rolls showing through windows at both ends, and a lined label in the middle.
  */
 function VhsCassette({ className }: { className?: string }) {
+  const windows = [
+    { x: 30, cx: 58, r: 38 },
+    { x: 226, cx: 262, r: 30 },
+  ]
   return (
-    <svg viewBox="0 0 300 176" className={className} aria-hidden="true">
-      <rect x="4" y="4" width="292" height="168" rx="12" fill="#8b5cf6" stroke="#151515" strokeWidth="6" />
-      <path d="M22 20l13 8-13 8z" fill="#fdf6e3" stroke="#151515" strokeWidth="2.5" strokeLinejoin="round" />
-      <rect x="56" y="16" width="188" height="44" rx="6" fill="#fdf6e3" stroke="#151515" strokeWidth="5" />
-      <path d="M66 27h56" stroke="#14b8a6" strokeWidth="6" strokeLinecap="round" />
-      <text x="150" y="51" textAnchor="middle" fontFamily="Permanent Marker, Gveret Levin, Rubik, cursive" fontSize="19" fill="#151515">
-        לא למחוק!
-      </text>
-      <rect x="34" y="68" width="232" height="66" rx="33" fill="#151515" />
-      {[
-        [92, 30],
-        [208, 17],
-      ].map(([cx, r]) => (
-        <g key={cx}>
-          <circle cx={cx} cy="101" r={r} fill="#6b4a2f" />
-          <circle cx={cx} cy="101" r="13" fill="#fdf6e3" stroke="#151515" strokeWidth="3" />
-          {[0, 60, 120].map((angle) => (
-            <rect key={angle} x={cx - 2.5} y="88" width="5" height="26" fill="#151515" transform={`rotate(${angle} ${cx} 101)`} />
-          ))}
-          <circle cx={cx} cy="101" r="4.5" fill="#fdf6e3" stroke="#151515" strokeWidth="2.5" />
-        </g>
+    <svg viewBox="0 0 320 184" className={className} aria-hidden="true">
+      <defs>
+        {windows.map((w) => (
+          <clipPath key={w.x} id={`vhs-window-${w.x}`}>
+            <rect x={w.x} y="70" width="64" height="80" rx="10" />
+          </clipPath>
+        ))}
+      </defs>
+      <rect x="1" y="3" width="318" height="178" rx="16" fill="#fff" />
+      <rect x="8" y="10" width="304" height="164" rx="10" fill="#4a4a50" stroke="#151515" strokeWidth="5" />
+      <path d="M8 52V20a10 10 0 0 1 10-10h284a10 10 0 0 1 10 10v32z" fill="#5c5c63" stroke="#151515" strokeWidth="5" strokeLinejoin="round" />
+      {[32, 38, 44].map((y) => (
+        <path key={y} d={`M22 ${y}h276`} stroke="#3e3e44" strokeWidth="2" />
       ))}
-      <path d="M4 142h292v18a12 12 0 0 1-12 12H16a12 12 0 0 1-12-12z" fill="#facc15" stroke="#151515" strokeWidth="5" strokeLinejoin="round" />
-      {[138, 146, 154, 162].map((x) => (
-        <path key={x} d={`M${x} 150v14`} stroke="#151515" strokeWidth="3" strokeLinecap="round" />
-      ))}
-      <text x="20" y="165" direction="ltr" fontFamily="Bowlby One, Rubik, sans-serif" fontSize="17" fill="#151515">
+      <path d="M160 15l-6 8h4v5h4v-5h4z" fill="#2c2c31" />
+      <rect x="264" y="16" width="34" height="13" rx="2" fill="none" stroke="#2c2c31" strokeWidth="1.5" />
+      <text x="281" y="27" textAnchor="middle" direction="ltr" fontFamily="DM Sans, Rubik, sans-serif" fontSize="10" fontWeight="700" fill="#2c2c31">
         VHS
       </text>
-      <text x="280" y="166" textAnchor="end" direction="ltr" fontFamily="VT323, monospace" fontSize="20" fill="#151515">
-        T-120
+      <rect x="20" y="60" width="280" height="100" rx="8" fill="#3b3b40" stroke="#151515" strokeWidth="3" />
+      {windows.map((w) => (
+        <g key={w.x}>
+          <rect x={w.x} y="70" width="64" height="80" rx="10" fill="#d6d1c4" />
+          <g clipPath={`url(#vhs-window-${w.x})`}>
+            <circle cx={w.cx} cy="110" r={w.r} fill="#8a5a2b" />
+            {[w.r - 6, w.r - 12, w.r - 18].map((r) => (
+              <circle key={r} cx={w.cx} cy="110" r={r} fill="none" stroke="#6e4520" strokeWidth="1.5" />
+            ))}
+            <circle cx={w.cx} cy="110" r="12" fill="#e9e9ec" stroke="#151515" strokeWidth="2.5" />
+            <circle cx={w.cx} cy="110" r="5" fill="#4a4a50" />
+          </g>
+          <rect x={w.x} y="70" width="64" height="80" rx="10" fill="none" stroke="#151515" strokeWidth="3" />
+        </g>
+      ))}
+      <rect x="104" y="68" width="112" height="84" rx="4" fill="#fdf6e3" stroke="#151515" strokeWidth="3" />
+      <path d="M105.5 69.5h109v17h-109z" fill="#fb923c" />
+      <path d="M104 87h112" stroke="#151515" strokeWidth="2" />
+      {[100, 112, 124, 136].map((y) => (
+        <path key={y} d={`M112 ${y}h96`} stroke="#cfc4a8" strokeWidth="1.5" />
+      ))}
+      <text x="160" y="121" textAnchor="middle" fontFamily="Permanent Marker, Gveret Levin, Rubik, cursive" fontSize="17" fill="#151515">
+        לא למחוק!
       </text>
     </svg>
   )
@@ -244,7 +258,7 @@ export default function Videos() {
           <h1 className="heading">ספריית הווידאו</h1>
           <p className="max-w-2xl text-lg">סרטונים ביתיים, טקסים והצגות. נא להחזיר את הקלטת להתחלה.</p>
         </div>
-        <VhsCassette className="w-28 shrink-0 -rotate-6 drop-shadow-[4px_4px_0_var(--color-ink)] sm:w-60" />
+        <VhsCassette className="w-28 shrink-0 -rotate-3 drop-shadow-[3px_4px_3px_rgb(0_0_0/0.3)] sm:w-64" />
       </header>
       <AddVideo onAdded={load} />
       {error && <p className="font-bold text-pink">{error}</p>}
