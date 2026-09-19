@@ -100,6 +100,14 @@ export interface Quote {
   addedBy: string | null
   createdAt: string
   comments: QuoteComment[]
+  /** Only the emoji somebody picked, in a fixed order. */
+  reactions: QuoteReaction[]
+  myReaction: string | null
+}
+
+export interface QuoteReaction {
+  emoji: string
+  count: number
 }
 
 /** A note passed to you. `from` is null when it was sent anonymously. */
@@ -168,10 +176,25 @@ export const editToken = {
   },
 }
 
+const REACTOR_KEY = 'reunion.reactor'
+
+/** A random key this browser keeps, so a visitor without a profile still reacts once and can take it back. */
+function reactorKey(): string | null {
+  try {
+    let key = localStorage.getItem(REACTOR_KEY)
+    if (!key) localStorage.setItem(REACTOR_KEY, (key = crypto.randomUUID()))
+    return key
+  } catch {
+    return null
+  }
+}
+
 export async function api<T = unknown>(path: string, init: { method?: string; json?: unknown; body?: BodyInit } = {}): Promise<T> {
   const headers: Record<string, string> = {}
   const token = editToken.get()
   if (token) headers['x-edit-token'] = token
+  const reactor = path.startsWith('/api/quotes') ? reactorKey() : null
+  if (reactor) headers['x-reactor'] = reactor
   if (init.json !== undefined) headers['Content-Type'] = 'application/json'
   const res = await fetch(path, {
     method: init.method ?? (init.json !== undefined || init.body ? 'POST' : 'GET'),

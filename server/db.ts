@@ -272,6 +272,15 @@ const MIGRATIONS: string[] = [
   ALTER TABLE tags ADD COLUMN class_label TEXT;
   ALTER TABLE tags ADD COLUMN is_staff INTEGER NOT NULL DEFAULT 0;
   `,
+  `
+  CREATE TABLE quote_reactions (
+    quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+    reactor TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (quote_id, reactor)
+  );
+  `,
 ]
 
 export function openDb(dataDir: string): Db {
