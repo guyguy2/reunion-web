@@ -99,3 +99,7 @@ railway variable set CLASS_PASSCODE=... ADMIN_PASSCODE=... SESSION_SECRET=... GO
 railway up
 railway domain
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
