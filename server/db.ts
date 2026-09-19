@@ -213,6 +213,14 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
+  `
+  CREATE TABLE recovery_tokens (
+    token_hash TEXT PRIMARY KEY,
+    person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ]
 
 export function openDb(dataDir: string): Db {

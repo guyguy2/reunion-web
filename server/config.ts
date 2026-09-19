@@ -8,10 +8,12 @@ export interface Config {
   port: number
   webDir: string
   secureCookies: boolean
-  /** Feedback is emailed through Resend when both the key and the recipient are set. */
+  /** Email goes through Resend when a key is set: feedback to FEEDBACK_TO, sign-in links to the profile's address. */
   resendApiKey?: string
   feedbackTo?: string
-  feedbackFrom?: string
+  emailFrom?: string
+  /** The site's public address, for links in emails. Falls back to the address of the request. */
+  publicUrl?: string
 }
 
 function required(name: string): string {
@@ -31,6 +33,7 @@ export function loadConfig(): Config {
     secureCookies: process.env.NODE_ENV === 'production',
     resendApiKey: process.env.RESEND_API_KEY,
     feedbackTo: process.env.FEEDBACK_TO,
-    feedbackFrom: process.env.FEEDBACK_FROM ?? 'Reunion site <onboarding@resend.dev>',
+    emailFrom: process.env.EMAIL_FROM ?? 'Reunion site <onboarding@resend.dev>',
+    publicUrl: process.env.PUBLIC_URL ?? (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined),
   }
 }

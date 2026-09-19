@@ -54,6 +54,7 @@ export function adminRoutes(config: Config, db: Db) {
     const id = Number(c.req.param('id'))
     db.prepare('UPDATE people SET claimed_at = NULL, edit_token_hash = NULL, pin_hash = NULL WHERE id = ?').run(id)
     db.prepare('DELETE FROM device_tokens WHERE person_id = ?').run(id)
+    db.prepare('DELETE FROM recovery_tokens WHERE person_id = ?').run(id)
     return c.json({ ok: true })
   })
 

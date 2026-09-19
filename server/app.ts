@@ -26,6 +26,8 @@ import { albumPhotos } from './album.ts'
 import { addTape, listTapes } from './tapes.ts'
 import { addVideo, listVideos } from './videos.ts'
 import { addFeedback, resendSender } from './feedback.ts'
+import { resendMailer, type Mailer } from './email.ts'
+import { redeemSignInLink, sendSignInLink } from './recovery.ts'
 import { deleteNote, listNotes, markNoteRead, sendNote, unreadNotes } from './notes.ts'
 
 const MIME: Record<string, string> = {
@@ -62,7 +64,7 @@ function loadEvent() {
   return event
 }
 
-export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
+export function createApp(config: Config, db: Db = openDb(config.dataDir), mailer: Mailer | null = resendMailer(config)) {
   const app = new Hono<AppEnv>()
   const limiter = createLoginLimiter()
 
@@ -163,29 +165,47 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
     return c.json(listPeople(db).map((p) => serializePerson(p, view)))
   })
 
+  /** The personal code chosen while claiming or creating a profile. Optional here; the site's forms always ask for it. */
+  const pinFrom = (body: unknown) => {
+    const pin = (body as { pin?: unknown } | null)?.pin
+    return typeof pin === 'string' && pin.trim() ? hashPin(pin) : null
+  }
+
   // Someone who is not on the roster adds themselves; they own the new profile right away.
   app.post('/api/people', async (c) => {
     let fields
+    let pinHash
     try {
-      fields = parsePersonInput(await c.req.json().catch(() => null), { admin: false })
+      const body = await c.req.json().catch(() => null)
+      fields = parsePersonInput(body, { admin: false })
       if (!fields.name) throw new Error('חובה למלא שם')
+      pinHash = pinFrom(body)
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
     const token = newEditToken()
-    const id = insertPerson(db, { ...fields, claimed_at: new Date().toISOString(), edit_token_hash: sha256(token) })
+    const id = insertPerson(db, { ...fields, claimed_at: new Date().toISOString(), edit_token_hash: sha256(token), pin_hash: pinHash })
     return c.json({ token, person: serializePerson(getPerson(db, id)!, 'full') }, 201)
   })
 
-  app.post('/api/people/:id/claim', (c) => {
+  app.post('/api/people/:id/claim', async (c) => {
+    let pinHash
+    let email
+    try {
+      const body = await c.req.json().catch(() => null)
+      pinHash = pinFrom(body)
+      email = parsePersonInput({ email: (body as { email?: unknown } | null)?.email ?? null }, { admin: false }).email ?? null
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
     const token = newEditToken()
     // Single conditional UPDATE so two people cannot claim the same profile.
     const result = db
       .prepare(
-        `UPDATE people SET claimed_at = ?, edit_token_hash = ?
+        `UPDATE people SET claimed_at = ?, edit_token_hash = ?, pin_hash = COALESCE(?, pin_hash), email = COALESCE(?, email)
          WHERE id = ? AND claimed_at IS NULL AND in_memoriam = 0`,
       )
-      .run(new Date().toISOString(), sha256(token), Number(c.req.param('id')))
+      .run(new Date().toISOString(), sha256(token), pinHash, email, Number(c.req.param('id')))
     if (result.changes === 0) {
       return c.json({ error: 'הפרופיל הזה כבר בבעלות מישהו. אם זה לא אתם, בקשו מהמארגנים לאפס אותו.' }, 409)
     }
@@ -208,6 +228,25 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
     const token = newEditToken()
     db.prepare('INSERT INTO device_tokens (token_hash, person_id) VALUES (?, ?)').run(sha256(token), person.id)
     return c.json({ token })
+  })
+
+  // Forgot the code (or never set one): a one-time sign-in link to the email on the profile.
+  app.post('/api/people/:id/signin-link', async (c) => {
+    const person = getPerson(db, Number(c.req.param('id')))
+    if (!person?.claimed_at) return c.json({ error: 'Not found' }, 404)
+    try {
+      const sentTo = await sendSignInLink(db, person, mailer, config.publicUrl ?? new URL(c.req.url).origin)
+      return c.json({ sentTo })
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+  })
+
+  app.post('/api/signin', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const result = typeof body.token === 'string' ? redeemSignInLink(db, body.token) : null
+    if (!result) return c.json({ error: 'הקישור כבר לא בתוקף. בקשו קישור חדש.' }, 400)
+    return c.json({ token: result.deviceToken })
   })
 
   // ---- Owner routes: authenticated by the private edit token, or a device key from signing in with the code ----
@@ -307,6 +346,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
     })
     db.prepare('DELETE FROM notes WHERE recipient_id = ?').run(me.id)
     db.prepare('DELETE FROM device_tokens WHERE person_id = ?').run(me.id)
+    db.prepare('DELETE FROM recovery_tokens WHERE person_id = ?').run(me.id)
     return c.json({ ok: true })
   })
 

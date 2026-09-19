@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, editToken, matchesPerson, type Person } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { NotesInbox } from '../components/Notes.tsx'
-import CodeLogin from '../components/CodeLogin.tsx'
+import CodeLogin, { NewOwnerFields, newOwnerReady, type NewOwner } from '../components/CodeLogin.tsx'
 import { LAYER, useEscape } from '../useEscape.ts'
 
 type Draft = Partial<Record<'name' | 'formerName' | 'nickname' | 'email' | 'instagram' | 'linkedin' | 'facebook' | 'x' | 'website' | 'phone' | 'city' | 'bio' | 'quote', string>> & {
@@ -161,13 +161,14 @@ function SignIn() {
 function Join() {
   const { people, adoptToken, reload } = useStore()
   const [name, setName] = useState('')
+  const [owner, setOwner] = useState<NewOwner>({ pin: '', email: '' })
   const [error, setError] = useState('')
   const sameName = name.trim().length > 1 ? people.filter((p) => p.claimed && matchesPerson(p, name)) : []
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     try {
-      const { token } = await api<{ token: string }>('/api/people', { json: { name } })
+      const { token } = await api<{ token: string }>('/api/people', { json: { name, ...owner } })
       await adoptToken(token)
       await reload()
     } catch (err) {
@@ -201,8 +202,9 @@ function Join() {
             כבר יש פרופיל בשם {sameName.map((p) => p.name).join(', ')}. אם זה אתם, אל תיצרו פרופיל חדש: היכנסו עם הקוד האישי למעלה.
           </p>
         )}
+        <NewOwnerFields value={owner} onChange={setOwner} />
         {error && <p className="font-bold text-pink">{error}</p>}
-        <button className="btn" disabled={name.trim().length < 2}>
+        <button className="btn" disabled={name.trim().length < 2 || !newOwnerReady(owner)}>
           יצירת הפרופיל שלי
         </button>
       </form>

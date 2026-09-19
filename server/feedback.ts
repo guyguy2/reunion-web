@@ -1,23 +1,18 @@
 import type { Config } from './config.ts'
 import type { Db, FeedbackRow } from './db.ts'
+import { resendMailer } from './email.ts'
 
 export type SendEmail = (message: { subject: string; text: string; replyTo?: string }) => Promise<void>
 
 const MAX_MESSAGE = 3000
 const EMAIL = /[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+/
 
-/** Emails through Resend's HTTP API. Returns null when no API key or recipient is set; feedback is then only saved. */
+/** Emails feedback to the organizers. Returns null when no API key or recipient is set; feedback is then only saved. */
 export function resendSender(config: Config, fetchImpl: typeof fetch = fetch): SendEmail | null {
-  const { resendApiKey, feedbackTo, feedbackFrom } = config
-  if (!resendApiKey || !feedbackTo) return null
-  return async ({ subject, text, replyTo }) => {
-    const res = await fetchImpl('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: feedbackFrom, to: [feedbackTo], subject, text, ...(replyTo ? { reply_to: replyTo } : {}) }),
-    })
-    if (!res.ok) throw new Error(`Resend answered ${res.status}`)
-  }
+  const mail = resendMailer(config, fetchImpl)
+  const to = config.feedbackTo
+  if (!mail || !to) return null
+  return (message) => mail({ ...message, to })
 }
 
 export function serializeFeedback(row: FeedbackRow) {

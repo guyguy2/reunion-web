@@ -10,6 +10,7 @@ import { insertPerson, parsePersonInput } from '../server/people.ts'
 import { addTape, parseTapeLink } from '../server/tapes.ts'
 import { addVideo, listVideos, parseVideoLink } from '../server/videos.ts'
 import { addFeedback, resendSender, type SendEmail } from '../server/feedback.ts'
+import type { Mailer } from '../server/email.ts'
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-test-'))
 const config: Config = {
@@ -432,7 +433,7 @@ describe('feedback', () => {
     expect(resendSender(config)).toBeNull()
     const calls: [string, RequestInit][] = []
     const fakeFetch = (async (url: string, init: RequestInit) => (calls.push([url, init]), new Response('{}'))) as unknown as typeof fetch
-    const send = resendSender({ ...config, resendApiKey: 'key', feedbackTo: 'me@example.com', feedbackFrom: 'Site <a@b.dev>' }, fakeFetch)!
+    const send = resendSender({ ...config, resendApiKey: 'key', feedbackTo: 'me@example.com', emailFrom: 'Site <a@b.dev>' }, fakeFetch)!
     await send({ subject: 'Hi', text: 'Body' })
     expect(calls[0][0]).toBe('https://api.resend.com/emails')
     expect(calls[0][1].headers).toMatchObject({ Authorization: 'Bearer key' })
@@ -513,5 +514,50 @@ describe('personal code sign-in', () => {
     const login = (pin: string, ip: string) => app.request(`/api/people/${person.id}/login`, json('POST', { pin }, { Cookie: member, 'x-real-ip': ip }))
     for (let i = 0; i < 10; i++) expect((await login(String(1000 + i), `10.8.0.${i}`)).status).toBe(401)
     expect((await login('9999', '10.8.1.1')).status).toBe(429)
+  })
+})
+
+describe('code chosen when claiming, and sign-in links by email', () => {
+  it('sets the code (and email) in the same step as claiming or creating a profile', async () => {
+    const created = await app.request('/api/people', json('POST', { name: 'Fresh Owner', pin: '4321' }, { Cookie: member }))
+    expect((await created.json()).person).toMatchObject({ hasPin: true })
+
+    const id = insertPerson(db, { name: 'Roster Only' })
+    expect((await app.request(`/api/people/${id}/claim`, json('POST', { pin: '12' }, { Cookie: member }))).status).toBe(400)
+    expect((await app.request(`/api/people/${id}/claim`, json('POST', { pin: '5555', email: 'nope' }, { Cookie: member }))).status).toBe(400)
+    const claimed = await app.request(`/api/people/${id}/claim`, json('POST', { pin: '5555', email: 'roster@example.com' }, { Cookie: member }))
+    expect(claimed.status).toBe(200)
+    const me = await (await app.request('/api/me', { headers: { Cookie: member, 'x-edit-token': (await claimed.json()).token } })).json()
+    expect(me).toMatchObject({ hasPin: true, email: 'roster@example.com' })
+  })
+
+  it('emails a one-time link that expires, and says so plainly when email is not set up', async () => {
+    const outbox: Parameters<Mailer>[0][] = []
+    const mailApp = createApp({ ...config, publicUrl: 'https://reunion.test' }, db, async (m) => void outbox.push(m))
+    const id = insertPerson(db, { name: 'Forgetful', email: 'forgetful@example.com', claimed_at: 'now' })
+    const noEmail = insertPerson(db, { name: 'No Email', claimed_at: 'now' })
+    const request = (a: typeof app, personId: number) => a.request(`/api/people/${personId}/signin-link`, { method: 'POST', headers: { Cookie: member } })
+
+    expect(await (await request(app, id)).json()).toMatchObject({ error: expect.stringContaining('עוד לא הוגדרה') })
+    expect((await request(mailApp, noEmail)).status).toBe(400)
+
+    const sent = await request(mailApp, id)
+    expect(await sent.json()).toEqual({ sentTo: 'f***@example.com' })
+    expect(outbox[0].to).toBe('forgetful@example.com')
+    const link = outbox[0].text.match(/https:\/\/reunion\.test\/signin\/(\S+)/)![1]
+    expect((await request(mailApp, id)).status).toBe(400) // cooldown: no second email right away
+
+    const signin = (token: string) => mailApp.request('/api/signin', json('POST', { token }, { Cookie: member }))
+    const ok = await signin(link)
+    expect(ok.status).toBe(200)
+    const me = await (await mailApp.request('/api/me', { headers: { Cookie: member, 'x-edit-token': (await ok.json()).token } })).json()
+    expect(me.id).toBe(id)
+    expect((await signin(link)).status).toBe(400) // works once
+
+    db.prepare("UPDATE recovery_tokens SET created_at = datetime('now', '-1 hour')").run()
+    await request(mailApp, id)
+    const second = outbox[1].text.match(/signin\/(\S+)/)![1]
+    db.prepare("UPDATE recovery_tokens SET expires_at = datetime('now', '-1 minute')").run()
+    expect((await signin(second)).status).toBe(400) // expired
   })
 })

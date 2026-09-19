@@ -5,7 +5,7 @@ import { api, faceUrl, matchesPerson, type Person, type Scene, type Tag } from '
 import { useStore } from '../store.tsx'
 import ContactLinks from './ContactLinks.tsx'
 import { NoteComposer } from './Notes.tsx'
-import CodeLogin from './CodeLogin.tsx'
+import CodeLogin, { NewOwnerFields, newOwnerReady, type NewOwner } from './CodeLogin.tsx'
 import { LAYER, useEscape } from '../useEscape.ts'
 
 const ATTENDING = {
@@ -59,6 +59,8 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
   const [error, setError] = useState('')
   const [writing, setWriting] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
+  const [claiming, setClaiming] = useState(false)
+  const [owner, setOwner] = useState<NewOwner>({ pin: '', email: '' })
   const faces = appearances(scenes, person.id)
   const thenSrc = person.thenPhoto ?? (faces.length ? faceUrl(faces[faces.length - 1].tag) : null)
   const isMe = me?.id === person.id
@@ -66,7 +68,7 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
   async function claim() {
     setError('')
     try {
-      const { token } = await api<{ token: string }>(`/api/people/${person.id}/claim`, { method: 'POST' })
+      const { token } = await api<{ token: string }>(`/api/people/${person.id}/claim`, { json: owner })
       await adoptToken(token)
       await reload()
       navigate('/me?welcome=1')
@@ -166,9 +168,18 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
             זה הפרופיל שלך. לעריכה
           </button>
         ) : !person.claimed && !person.inMemoriam && !me ? (
-          <button className="btn btn-pink w-full" onClick={claim}>
-            זה הפרופיל שלי! אני רוצה לערוך אותו
-          </button>
+          claiming ? (
+            <form className="space-y-3 rounded-lg border-[3px] border-ink p-3" onSubmit={(e) => (e.preventDefault(), claim())}>
+              <NewOwnerFields value={owner} onChange={setOwner} />
+              <button className="btn btn-pink w-full" disabled={!newOwnerReady(owner)}>
+                זה הפרופיל שלי
+              </button>
+            </form>
+          ) : (
+            <button className="btn btn-pink w-full" onClick={() => setClaiming(true)}>
+              זה הפרופיל שלי! אני רוצה לערוך אותו
+            </button>
+          )
         ) : person.claimed && !me ? (
           signingIn ? (
             <div className="rounded-lg border-[3px] border-ink p-3">
@@ -197,6 +208,7 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
 export function UnknownPanel({ tag, onClose, onNamed, layout }: { tag: Tag; onClose: () => void; onNamed: (personId: number) => void; layout: PanelLayout }) {
   const { people, scenes, me, adoptToken, reload } = useStore()
   const [mode, setMode] = useState<'me' | 'other' | null>(null)
+  const [owner, setOwner] = useState<NewOwner>({ pin: '', email: '' })
   const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -227,7 +239,7 @@ export function UnknownPanel({ tag, onClose, onNamed, layout }: { tag: Tag; onCl
   const thatsMeNew = (e: FormEvent) => {
     e.preventDefault()
     return run(async () => {
-      const { token, person } = await api<{ token: string; person: Person }>('/api/people', { json: { name } })
+      const { token, person } = await api<{ token: string; person: Person }>('/api/people', { json: { name, ...owner } })
       await adoptToken(token)
       await api(`/api/tags/${tag.id}/identify`, { method: 'POST' })
       return person.id
@@ -277,12 +289,12 @@ export function UnknownPanel({ tag, onClose, onNamed, layout }: { tag: Tag; onCl
                   key={p.id}
                   dir="auto"
                   className="btn btn-plain btn-sm w-full justify-start"
-                  disabled={busy || (mode === 'me' && p.claimed)}
+                  disabled={busy || (mode === 'me' && (p.claimed || !newOwnerReady(owner)))}
                   onClick={() =>
                     mode === 'other'
                       ? suggest({ personId: p.id })
                       : run(async () => {
-                          const { token } = await api<{ token: string }>(`/api/people/${p.id}/claim`, { method: 'POST' })
+                          const { token } = await api<{ token: string }>(`/api/people/${p.id}/claim`, { json: owner })
                           await adoptToken(token)
                           await api(`/api/tags/${tag.id}/identify`, { method: 'POST' })
                           return p.id
@@ -295,7 +307,8 @@ export function UnknownPanel({ tag, onClose, onNamed, layout }: { tag: Tag; onCl
               ))}
             </div>
           )}
-          <button className="btn w-full" disabled={busy || name.trim().length < 2}>
+          {mode === 'me' && <NewOwnerFields value={owner} onChange={setOwner} />}
+          <button className="btn w-full" disabled={busy || name.trim().length < 2 || (mode === 'me' && !newOwnerReady(owner))}>
             {mode === 'me' ? 'יצירת הפרופיל שלי' : 'הוספת השם'}
           </button>
         </form>

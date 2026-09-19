@@ -10,6 +10,7 @@ import Videos from './routes/Videos.tsx'
 import Memories from './routes/Memories.tsx'
 import EventPage from './routes/EventPage.tsx'
 import Me from './routes/Me.tsx'
+import { SignInFromLink } from './components/CodeLogin.tsx'
 
 const Admin = lazy(() => import('./routes/Admin.tsx'))
 
@@ -81,6 +82,7 @@ function Shell() {
               <Route path="/event" element={<EventPage />} />
               <Route path="/me" element={<Me />} />
               <Route path="/me/:token" element={<Me />} />
+              <Route path="/signin/:token" element={<SignInFromLink />} />
               <Route path="/admin" element={role === 'admin' ? <Admin /> : <Yearbook />} />
               <Route path="*" element={<Yearbook />} />
             </Routes>
