@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { Tape } from '../web/src/api.ts'
 import ContactLinks from '../web/src/components/ContactLinks.tsx'
+import { NoteCard } from '../web/src/components/Notes.tsx'
 import { buildShelf, canSkip, nextTape, pickTape, spotifyUri, tapeFinished } from '../web/src/tapes.ts'
 import { embedUrl, isTallEmbed, thumbnailUrl } from '../web/src/videos.ts'
 
@@ -37,6 +38,24 @@ describe('contact links', () => {
     const html = render({ email: null, instagram: null, linkedin: null, phone: '+972 (50) 123-4567' })
     expect(html).toContain('href="tel:+972501234567"')
     expect(html).toContain('>+972 (50) 123-4567</a>')
+  })
+})
+
+describe('notes', () => {
+  const note = { id: 1, message: 'Meet me by the lockers', from: null, read: false, createdAt: '2026-09-18 20:00:00' }
+  const card = (n: typeof note | (Omit<typeof note, 'from'> & { from: { id: number; name: string } })) =>
+    renderToStaticMarkup(createElement(NoteCard, { note: n, index: 0, onOpen: () => {}, onThrowAway: () => {} }))
+
+  it('keeps a note folded, message hidden, until it is opened', () => {
+    const html = card(note)
+    expect(html).toContain('פתק ממישהו מהמחזור')
+    expect(html).not.toContain('Meet me by the lockers')
+  })
+
+  it('shows the message on notebook paper, signed by the sender or left anonymous', () => {
+    expect(card({ ...note, read: true })).toContain('Meet me by the lockers')
+    expect(card({ ...note, read: true })).toContain('notebook-paper')
+    expect(card({ ...note, read: true, from: { id: 3, name: 'Guy' } })).toContain('>Guy</p>')
   })
 })
 

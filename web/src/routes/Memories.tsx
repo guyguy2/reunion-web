@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api.ts'
 import { useStore } from '../store.tsx'
+import { LAYER, useEscape } from '../useEscape.ts'
 
 interface AlbumPhoto {
   src: string
@@ -22,10 +23,11 @@ export default function Memories() {
       .catch(() => setPhotos([]))
   }, [])
 
+  useEscape(open !== null && (() => setOpen(null)), LAYER.dialog)
+
   useEffect(() => {
     if (open === null || !photos) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(null)
       // Right-to-left page: the left arrow moves forward.
       if (e.key === 'ArrowLeft') setOpen((i) => (i === null ? i : (i + 1) % photos.length))
       if (e.key === 'ArrowRight') setOpen((i) => (i === null ? i : (i - 1 + photos.length) % photos.length))

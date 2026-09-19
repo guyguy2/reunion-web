@@ -7,6 +7,9 @@ interface Store {
   scenes: Scene[]
   event: EventInfo | null
   me: Person | null
+  /** Unread notes for "me", kept apart from `me` so opening a note doesn't reset the profile form. */
+  unreadNotes: number
+  setUnreadNotes: (n: number) => void
   loading: boolean
   reload: () => Promise<void>
   /** Stores a new edit token (after claiming or opening an edit link) and refreshes "me". */
@@ -28,6 +31,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
   const [scenes, setScenes] = useState<Scene[]>([])
   const [event, setEvent] = useState<EventInfo | null>(null)
   const [me, setMe] = useState<Person | null>(null)
+  const [unreadNotes, setUnreadNotes] = useState(0)
   const [loading, setLoading] = useState(true)
 
   const loadMe = useCallback(async () => {
@@ -35,6 +39,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
     try {
       const person = await api<Person>('/api/me')
       setMe(person)
+      setUnreadNotes(person.unreadNotes ?? 0)
       return person
     } catch {
       setMe(null)
@@ -60,6 +65,8 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
       scenes,
       event,
       me,
+      unreadNotes: me ? unreadNotes : 0,
+      setUnreadNotes,
       loading,
       reload,
       adoptToken: async (token) => {
@@ -74,7 +81,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
       },
       personById: (id) => (id == null ? undefined : index.get(id)),
     }
-  }, [role, people, scenes, event, me, loading, reload, loadMe])
+  }, [role, people, scenes, event, me, unreadNotes, loading, reload, loadMe])
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
 }

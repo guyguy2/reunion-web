@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api.ts'
 import { useStore } from '../store.tsx'
+import { LAYER, useEscape } from '../useEscape.ts'
 
 /** A "feedback" button in the header; the form drops down below it. The message goes to the organizers by email. */
 export default function Feedback() {
@@ -16,12 +17,7 @@ export default function Feedback() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
+  useEscape(open && (() => setOpen(false)), LAYER.dialog)
 
   async function send(e: FormEvent) {
     e.preventDefault()

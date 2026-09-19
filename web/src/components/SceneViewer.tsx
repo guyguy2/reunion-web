@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import OpenSeadragon from 'openseadragon'
 import { faceUrl, type Scene, type Tag } from '../api.ts'
+import { LAYER, useEscape } from '../useEscape.ts'
 
 interface Props {
   scene: Scene
@@ -112,6 +113,9 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
     osd.viewport.fitBounds(rect)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.tagId, focus?.nonce, opened])
+
+  // Escape zooms back out, like the "all" button, once no window is open on top.
+  useEscape(() => viewer.current?.viewport.goHome(), LAYER.picture)
 
   const zoom = (factor: number) => {
     const vp = viewer.current?.viewport

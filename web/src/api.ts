@@ -27,6 +27,8 @@ export interface Person {
   showWebsite?: boolean
   showPhone?: boolean
   showX?: boolean
+  /** Only on your own profile (GET /api/me). */
+  unreadNotes?: number
 }
 
 export interface Tag {
@@ -70,6 +72,15 @@ export interface Video {
   note: string | null
   addedBy: string | null
   url: string
+}
+
+/** A note passed to you. `from` is null when it was sent anonymously. */
+export interface Note {
+  id: number
+  message: string
+  from: { id: number | null; name: string } | null
+  read: boolean
+  createdAt: string
 }
 
 /** A message sent through the feedback button, as organizers see it. */

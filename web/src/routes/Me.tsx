@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, editToken, type Person } from '../api.ts'
 import { useStore } from '../store.tsx'
+import { NotesInbox } from '../components/Notes.tsx'
+import { LAYER, useEscape } from '../useEscape.ts'
 
 type Draft = Partial<Record<'name' | 'formerName' | 'nickname' | 'email' | 'instagram' | 'linkedin' | 'facebook' | 'x' | 'website' | 'phone' | 'city' | 'bio' | 'quote', string>> & {
   attending: Person['attending']
@@ -126,6 +128,7 @@ export default function Me() {
   const [linkError, setLinkError] = useState('')
   const [copied, setCopied] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  useEscape(confirmRemove && (() => setConfirmRemove(false)), LAYER.dialog)
 
   // Arriving via a private edit link: adopt the token, then drop it from the address bar.
   useEffect(() => {
@@ -213,6 +216,8 @@ export default function Me() {
           </button>
         </div>
       </div>
+
+      <NotesInbox />
 
       <form onSubmit={save} className="chunk space-y-4 p-5">
         {text('name', 'שם')}

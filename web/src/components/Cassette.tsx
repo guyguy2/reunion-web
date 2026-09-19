@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { api, type Tape as ShelfTape } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { buildShelf, canSkip, nextTape, pickTape, spotifyUri, tapeFinished } from '../tapes.ts'
+import { LAYER, useEscape } from '../useEscape.ts'
 
 // Minimal slice of the YouTube IFrame Player API that we use.
 interface YTPlayer {
@@ -218,6 +219,8 @@ export default function Cassette() {
   }, [ready, volume])
 
   const toggle = () => deck.current?.toggle(playing)
+
+  useEscape(open && (() => (adding ? setAdding(false) : setOpen(false))), LAYER.drawer)
 
   const startAdding = () => {
     setForm((f) => ({ ...f, addedBy: f.addedBy || me?.name || '' }))

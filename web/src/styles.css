@@ -243,3 +243,35 @@ img-comparison-slider {
   --default-handle-width: 56px;
   outline: none;
 }
+
+/* ---- Notes: a page torn out of a school notebook ---- */
+.notebook-paper {
+  --line: 1.75rem;
+  position: relative;
+  padding: 1.25rem 3.75rem 1.25rem 1.25rem;
+  color: #1e3a8a;
+  background-color: #fffdf5;
+  /* The red margin line sits on the right, where a Hebrew page starts. */
+  background-image: linear-gradient(to left, transparent 3rem, #f28b8b 3rem, #f28b8b calc(3rem + 2px), transparent calc(3rem + 2px));
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.15),
+    3px 8px 18px rgb(0 0 0 / 0.2);
+}
+/* Binder holes along the torn edge. */
+.notebook-paper::before {
+  content: '';
+  position: absolute;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  right: 0.6rem;
+  width: 1.1rem;
+  background: radial-gradient(circle, #d9d3c3 0 0.38rem, #bdb6a4 0.39rem 0.45rem, transparent 0.46rem) center top / 1.1rem 4rem repeat-y;
+}
+/* Blue ruled lines under the handwriting; they scroll with the text inside a textarea. */
+.notebook-lines {
+  font-family: var(--font-marker);
+  font-size: 1.3rem;
+  line-height: var(--line);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 calc(var(--line) - 1px), #a8c6ea calc(var(--line) - 1px) var(--line));
+  background-attachment: local;
+}

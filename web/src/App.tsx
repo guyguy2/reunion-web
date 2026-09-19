@@ -23,7 +23,7 @@ const TABS = [
 ]
 
 function Shell() {
-  const { event, role, loading } = useStore()
+  const { event, role, loading, unreadNotes } = useStore()
   const tabs = role === 'admin' ? [...TABS, { to: '/admin', label: 'חדר המנהל', color: 'bg-ink text-white' }] : TABS
 
   useEffect(() => {
@@ -49,6 +49,11 @@ function Shell() {
               }
             >
               {tab.label}
+              {tab.to === '/me' && unreadNotes > 0 && (
+                <span className="ms-1 inline-block rounded-full border-2 border-ink bg-pink px-1.5 font-sans text-xs font-bold text-white" aria-label={`${unreadNotes} פתקים חדשים`}>
+                  {unreadNotes}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

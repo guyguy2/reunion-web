@@ -4,6 +4,8 @@ import 'img-comparison-slider'
 import { api, faceUrl, matchesPerson, type Person, type Scene, type Tag } from '../api.ts'
 import { useStore } from '../store.tsx'
 import ContactLinks from './ContactLinks.tsx'
+import { NoteComposer } from './Notes.tsx'
+import { LAYER, useEscape } from '../useEscape.ts'
 
 const ATTENDING = {
   yes: { text: 'אהיה שם!', className: 'bg-teal text-white' },
@@ -12,6 +14,7 @@ const ATTENDING = {
 }
 
 export function Drawer({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  useEscape(onClose, LAYER.drawer)
   return (
     <section className="chunk absolute inset-x-2 bottom-16 z-10 max-h-[62%] overflow-y-auto p-4 shadow-chunk-lg sm:inset-x-auto sm:end-16 sm:top-3 sm:bottom-3 sm:max-h-none sm:w-96">
       <button className="btn btn-plain btn-sm pixel absolute end-2 top-2 text-lg leading-none" onClick={onClose} aria-label="סגירה">
@@ -33,6 +36,7 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
   const { scenes, me, adoptToken, reload } = useStore()
   const navigate = useNavigate()
   const [error, setError] = useState('')
+  const [writing, setWriting] = useState(false)
   const faces = appearances(scenes, person.id)
   const thenSrc = person.thenPhoto ?? (faces.length ? faceUrl(faces[faces.length - 1].tag) : null)
   const isMe = me?.id === person.id
@@ -139,9 +143,15 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
             זה הפרופיל שלי! אני רוצה לערוך אותו
           </button>
         ) : null}
+        {!isMe && !person.inMemoriam && (
+          <button className="btn btn-plain w-full" onClick={() => setWriting(true)}>
+            שליחת פתק
+          </button>
+        )}
         {!person.claimed && !isMe && <p className="text-sm opacity-70">אף אחד עדיין לא לקח בעלות על הפרופיל הזה.</p>}
         {error && <p className="font-bold text-pink">{error}</p>}
       </div>
+      {writing && <NoteComposer to={person} onClose={() => setWriting(false)} />}
     </Drawer>
   )
 }

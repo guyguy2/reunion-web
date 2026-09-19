@@ -3,6 +3,7 @@ import { api, type Video } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { mixtape } from '../components/Cassette.tsx'
 import { PROVIDER_NAME, embedUrl, isTallEmbed, thumbnailUrl } from '../videos.ts'
+import { LAYER, useEscape } from '../useEscape.ts'
 
 const PROVIDER_COLOR: Record<Video['provider'], string> = {
   youtube: 'bg-pink',
@@ -86,6 +87,7 @@ function AddVideo({ onAdded }: { onAdded: () => Promise<unknown> }) {
   const [form, setForm] = useState({ url: '', title: '', note: '', addedBy: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  useEscape(open && (() => setOpen(false)), LAYER.drawer)
 
   const start = () => {
     setForm((f) => ({ ...f, addedBy: f.addedBy || me?.name || '' }))

@@ -34,7 +34,8 @@ function SearchBox({ onPick }: { onPick: (person: Person) => void }) {
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && results[0]) (onPick(results[0]), setOpen(false))
-          if (e.key === 'Escape') setOpen(false)
+          // Closing the suggestions shouldn't also zoom the picture out.
+          if (e.key === 'Escape' && open) (e.nativeEvent.stopPropagation(), setOpen(false))
         }}
         aria-label="חיפוש בוגרים לפי שם"
       />
