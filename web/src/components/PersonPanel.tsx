@@ -172,6 +172,11 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
                   <span className="marker block pt-1 text-xs leading-tight" dir="auto">
                     {scene.title}
                   </span>
+                  {tag.classLabel && (
+                    <span className="block text-xs leading-tight opacity-70" dir="auto">
+                      {tag.classLabel}
+                    </span>
+                  )}
                 </button>
                 {canUntag &&
                   (untagging === tag.id ? (

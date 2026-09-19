@@ -152,6 +152,9 @@ export default function YearbookViewer() {
 
       <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-col gap-2 sm:inset-x-3 sm:top-3 sm:flex-row sm:items-start [&>*]:pointer-events-auto">
         <SearchBox onPick={(p) => (setUnknownTag(null), go({ personId: p.id }))} />
+        <Link to="/friends" className="btn btn-sm shrink-0 whitespace-nowrap">
+          סינון לפי כיתה, שנה, בנים/בנות
+        </Link>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {scenes.map((s) => (
             <button

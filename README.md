@@ -27,6 +27,8 @@ Taken with the built-in demo data (generated cartoon classmates, not real people
 
 - **Passcode gate.** One shared class passcode, checked on the server and rate limited. Nothing (API, pictures, uploads) is served without it, except the old school postcard on the passcode screen. A separate admin passcode unlocks the organizer tools. Every response is `noindex`.
 - **Yearbook viewer.** OpenSeadragon deep zoom, one tab per picture plus a generated portrait wall of everyone, search that flies to a person, a deep link per person (`/p/:id`), a "through the years" strip cropped from each poster, and a then/now slider. Phones get a grid of portrait tiles instead, so nobody downloads the big posters on mobile data.
+- **Find friends.** Search by name and slice the yearbook by the year of the class photo, by class, and by boys or girls, sorted by name or grouped by class. The filters live in the address, so a slice can be shared. It is the phone yearbook, and on bigger screens it sits next to the class photos at `/friends`.
+- **Welcome.** Once the site knows who you are, it says hello (good morning, good evening), shows where your RSVP stands and how many days are left. Once per visit.
 - **Crowd-sourced names.** Unnamed faces can be named by any classmate, either as an existing person or as a new, unclaimed profile. A profile owner can take their name off a wrongly tagged face ("That's not me"); organizers can do the same for anyone.
 - **Profiles.** Claim your face or add yourself if you are not on the roster. Fill in a nickname, city, bio, a favorite quote, contact links (email, phone, Instagram, LinkedIn, Facebook, X, website), then and now photos, and whether you are coming. "Remove my info" wipes everything except the name and releases the profile.
 - **Signing in.** Claiming returns a private edit link; only its hash is stored. A personal code (salted scrypt) signs you in on another phone or computer, and each device gets its own key. Forgot the code? A one-time sign-in link is emailed to the address on the profile (valid for 30 minutes). Wrong codes are rate limited per device and per profile.
@@ -41,6 +43,7 @@ Taken with the built-in demo data (generated cartoon classmates, not real people
   - Overview: roster size, claimed profiles, RSVPs, faces named, notes sent (counts only), tapes, videos, quotes, visits.
   - Pictures: upload (auto-tiled), auto-detect faces in the browser (MediaPipe), draw, move and delete boxes (Annotorious), assign names, rebuild the portrait wall.
   - People: add and edit, CSV roster import, reset a claim, mark a profile in memoriam.
+  - Class roster: the names printed under the faces (an initial and a surname) become unclaimed profiles, matched across the posters. A one-by-one review fixes a name and marks boy or girl with one tap or key; other views merge possible duplicates, name the faces that could not be read, and hide staff. Staff faces stay in the database but never reach the yearbook, the search or the counts. The reviewed roster downloads as one JSON file and uploads on another copy of the site, where faces are matched by picture and position and names people already gave are kept.
   - Moderation: remove any tape, video, quote or comment, and read the feedback inbox.
   - Data: load demo data into an empty site, download a JSON backup of every profile, picture and face tag (no image files, sign-in secrets or notes).
 
@@ -63,6 +66,7 @@ pnpm install
 cp .env.example .env    # then set the passcodes and a random SESSION_SECRET
 pnpm dev                # API on :3000, Vite on :5173 (or the next free port)
 pnpm seed               # optional: fake classmates and pictures into an empty ./data
+pnpm roster:import f.json   # optional: apply a roster file (same as uploading it on the admin page)
 pnpm test
 pnpm typecheck
 ```

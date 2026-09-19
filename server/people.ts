@@ -15,6 +15,7 @@ export const EDITABLE_FIELDS = [
   'bio',
   'quote',
   'attending',
+  'gender',
 ] as const
 const FLAG_FIELDS = ['show_email', 'show_instagram', 'show_linkedin', 'show_facebook', 'show_website', 'show_phone', 'show_x'] as const
 const ADMIN_FLAG_FIELDS = ['in_memoriam'] as const
@@ -43,6 +44,7 @@ export function serializePerson(row: PersonRow, view: View) {
     thenPhoto: row.then_photo ? `/media/${row.then_photo}` : null,
     nowPhoto: row.now_photo ? `/media/${row.now_photo}` : null,
     attending: row.attending,
+    gender: row.gender,
     inMemoriam: Boolean(row.in_memoriam),
     claimed: Boolean(row.claimed_at),
     hasPin: Boolean(row.pin_hash),
@@ -110,6 +112,7 @@ export function parsePersonInput(body: unknown, opts: { admin: boolean }): Recor
     if (key === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('כתובת האימייל לא תקינה')
     if (key === 'phone' && value && !/^\+?[\d\s().-]{7,25}$/.test(value)) throw new Error('מספר הטלפון לא תקין')
     if (key === 'attending' && value && !['yes', 'no', 'maybe'].includes(value)) throw new Error('Invalid attending value')
+    if (key === 'gender' && value && !['m', 'f'].includes(value)) throw new Error('Invalid gender value')
     if (key === 'instagram' && value) value = cleanInstagram(value)
     if (key === 'linkedin' && value && !/^https?:\/\//i.test(value)) value = `https://${value}`
     if (key === 'facebook' && value) value = cleanFacebook(value)

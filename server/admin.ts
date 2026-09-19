@@ -7,6 +7,7 @@ import { getPerson, insertPerson, parseCsv, parsePersonInput, serializePerson, u
 import { addGroupScene, deleteScene, getScene, insertTag, listScenes, rebuildWall, serializeTag } from './scenes.ts'
 import { loadDemoData } from './demo.ts'
 import { listFeedback } from './feedback.ts'
+import { exportRoster, importRoster, markPersonStaff, mergePeople, parseRoster } from './roster.ts'
 
 function parseBox(body: Record<string, unknown>) {
   const box = { x: Number(body.x), y: Number(body.y), w: Number(body.w), h: Number(body.h) }
@@ -58,6 +59,32 @@ export function adminRoutes(config: Config, db: Db) {
     return c.json({ ok: true })
   })
 
+  // Two profiles that turned out to be one person, e.g. a surname spelled two ways on two posters.
+  admin.post('/people/:id/merge', async (c) => {
+    const from = getPerson(db, Number(c.req.param('id')))
+    const body = await c.req.json().catch(() => ({}))
+    const into = getPerson(db, Number(body.intoId))
+    if (!from || !into) return c.json({ error: 'Not found' }, 404)
+    try {
+      mergePeople(db, from, into)
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+    return c.json(serializePerson(getPerson(db, into.id)!, 'full'))
+  })
+
+  // A teacher who got a profile: hide their faces and drop the profile.
+  admin.post('/people/:id/staff', (c) => {
+    const person = getPerson(db, Number(c.req.param('id')))
+    if (!person) return c.json({ error: 'Not found' }, 404)
+    try {
+      markPersonStaff(db, person)
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+    return c.json({ ok: true })
+  })
+
   admin.post('/people/:id/photo/:kind', async (c) => {
     const person = getPerson(db, Number(c.req.param('id')))
     const kind = c.req.param('kind')
@@ -94,6 +121,9 @@ export function adminRoutes(config: Config, db: Db) {
   })
 
   // ---- Scenes and tags ----
+  // Unlike GET /api/scenes, this one includes the hidden staff faces.
+  admin.get('/scenes', (c) => c.json(listScenes(db, { staff: true })))
+
   admin.post('/scenes', async (c) => {
     const body = await c.req.parseBody()
     const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 80) : 'תמונה קבוצתית'
@@ -159,13 +189,34 @@ export function adminRoutes(config: Config, db: Db) {
       const box = 'x' in body ? parseBox(body) : tag
       const personId = 'personId' in body ? (body.personId == null ? null : Number(body.personId)) : tag.person_id
       if (personId !== null && !getPerson(db, personId)) throw new Error('Unknown person')
-      db.prepare('UPDATE tags SET person_id = ?, x = ?, y = ?, w = ?, h = ? WHERE id = ?').run(
-        personId, box.x, box.y, box.w, box.h, id,
+      const text = (key: 'caption' | 'classLabel', current: string | null) =>
+        key in body ? (typeof body[key] === 'string' && body[key].trim() ? body[key].trim().slice(0, 80) : null) : current
+      const staff = 'staff' in body ? (body.staff ? 1 : 0) : tag.is_staff
+      db.prepare('UPDATE tags SET person_id = ?, x = ?, y = ?, w = ?, h = ?, caption = ?, class_label = ?, is_staff = ? WHERE id = ?').run(
+        staff ? null : personId, box.x, box.y, box.w, box.h, text('caption', tag.caption), text('classLabel', tag.class_label), staff, id,
       )
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
     return c.json(serializeTag(db.prepare('SELECT * FROM tags WHERE id = ?').get(id) as unknown as TagRow))
+  })
+
+  // Gives a face a profile of its own, named after its printed caption unless a name is given.
+  // Also how a face that was matched to the wrong person is split off.
+  admin.post('/tags/:id/new-person', async (c) => {
+    const id = Number(c.req.param('id'))
+    const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(id) as unknown as TagRow | undefined
+    if (!tag) return c.json({ error: 'Not found' }, 404)
+    const body = await c.req.json().catch(() => ({}))
+    try {
+      const fields = parsePersonInput({ name: body.name ?? tag.caption, gender: body.gender ?? null }, { admin: true })
+      if (!fields.name) throw new Error('חובה למלא שם')
+      const personId = insertPerson(db, fields)
+      db.prepare('UPDATE tags SET person_id = ?, is_staff = 0 WHERE id = ?').run(personId, id)
+      return c.json(serializePerson(getPerson(db, personId)!, 'full'), 201)
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
   })
 
   admin.delete('/tags/:id', (c) => {
@@ -215,8 +266,8 @@ export function adminRoutes(config: Config, db: Db) {
         maybe: count("SELECT COUNT(*) AS n FROM people WHERE attending = 'maybe'"),
         no: count("SELECT COUNT(*) AS n FROM people WHERE attending = 'no'"),
       },
-      faces: count("SELECT COUNT(*) AS n FROM tags JOIN scenes ON scenes.id = tags.scene_id WHERE scenes.kind = 'group'"),
-      facesNamed: count("SELECT COUNT(*) AS n FROM tags JOIN scenes ON scenes.id = tags.scene_id WHERE scenes.kind = 'group' AND tags.person_id IS NOT NULL"),
+      faces: count("SELECT COUNT(*) AS n FROM tags JOIN scenes ON scenes.id = tags.scene_id WHERE scenes.kind = 'group' AND tags.is_staff = 0"),
+      facesNamed: count("SELECT COUNT(*) AS n FROM tags JOIN scenes ON scenes.id = tags.scene_id WHERE scenes.kind = 'group' AND tags.is_staff = 0 AND tags.person_id IS NOT NULL"),
       notes: count('SELECT COUNT(*) AS n FROM notes'),
       notesUnread: count('SELECT COUNT(*) AS n FROM notes WHERE read_at IS NULL'),
       feedback: count('SELECT COUNT(*) AS n FROM feedback'),
@@ -243,6 +294,20 @@ export function adminRoutes(config: Config, db: Db) {
       scenes: db.prepare('SELECT * FROM scenes ORDER BY id').all(),
       tags: db.prepare('SELECT * FROM tags ORDER BY id').all(),
     })
+  })
+
+  // ---- Roster: the names, classes and genders on the class photos, to carry between copies of the site ----
+  admin.get('/roster/export', (c) => {
+    c.header('Content-Disposition', `attachment; filename="reunion-roster-${new Date().toISOString().slice(0, 10)}.json"`)
+    return c.json(exportRoster(db))
+  })
+
+  admin.post('/roster/import', async (c) => {
+    try {
+      return c.json(importRoster(db, parseRoster(await c.req.json().catch(() => null))))
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
   })
 
   // ---- Feedback ----

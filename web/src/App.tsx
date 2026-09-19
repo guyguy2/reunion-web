@@ -7,6 +7,8 @@ import Cassette from './components/Cassette.tsx'
 import Feedback from './components/Feedback.tsx'
 import { RsvpShortcut } from './components/Rsvp.tsx'
 import Yearbook from './routes/Yearbook.tsx'
+import YearbookGrid from './routes/YearbookGrid.tsx'
+import Welcome from './components/Welcome.tsx'
 import Videos from './routes/Videos.tsx'
 import Memories from './routes/Memories.tsx'
 import Quotes from './routes/Quotes.tsx'
@@ -100,6 +102,7 @@ function Shell() {
             <Routes>
               <Route path="/" element={<Yearbook />} />
               <Route path="/p/:personId" element={<Yearbook />} />
+              <Route path="/friends" element={<YearbookGrid />} />
               <Route path="/videos" element={<Videos />} />
               <Route path="/memories" element={<Memories />} />
               <Route path="/quotes" element={<Quotes />} />
@@ -116,6 +119,7 @@ function Shell() {
 
       {/* Mounted outside the routes so the music keeps playing while people browse. */}
       <Cassette />
+      <Welcome />
     </div>
   )
 }
