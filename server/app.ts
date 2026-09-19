@@ -58,7 +58,8 @@ function sendFile(c: Context, root: string, relPath: string, cacheControl: strin
 }
 
 function loadEvent() {
-  const event = JSON.parse(fs.readFileSync(path.resolve('content/event.json'), 'utf8'))
+  // The real event details stay out of git in EVENT_JSON; content/event.json is only a placeholder.
+  const event = JSON.parse(process.env.EVENT_JSON || fs.readFileSync(path.resolve('content/event.json'), 'utf8'))
   // Links that grant access stay out of git and come from the environment.
   event.memories = { ...event.memories, albumUrl: process.env.GOOGLE_PHOTOS_ALBUM_URL ?? '' }
   if (process.env.YOUTUBE_PLAYLIST_ID) event.music.youtubePlaylistId = process.env.YOUTUBE_PLAYLIST_ID

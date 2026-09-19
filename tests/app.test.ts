@@ -90,6 +90,19 @@ describe('passcode gate', () => {
   })
 })
 
+describe('event details', () => {
+  it('shows the placeholder from content/event.json unless EVENT_JSON is set', async () => {
+    const title = async () => ((await (await app.request('/api/event', { headers: { Cookie: member } })).json()) as { title: string }).title
+    expect(await title()).toBe('Class Reunion')
+    process.env.EVENT_JSON = JSON.stringify({ title: 'The real reunion', music: {}, memories: {} })
+    try {
+      expect(await title()).toBe('The real reunion')
+    } finally {
+      delete process.env.EVENT_JSON
+    }
+  })
+})
+
 describe('profiles', () => {
   it('hides opted-out contact fields and never exposes token hashes', async () => {
     const res = await app.request('/api/people', { headers: { Cookie: member } })

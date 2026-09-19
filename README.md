@@ -32,10 +32,10 @@ Taken with the built-in demo data (generated cartoon classmates, not real people
 - **Signing in.** Claiming returns a private edit link; only its hash is stored. A personal code (salted scrypt) signs you in on another phone or computer, and each device gets its own key. Forgot the code? A one-time sign-in link is emailed to the address on the profile (valid for 30 minutes). Wrong codes are rate limited per device and per profile.
 - **Notes.** Pass a private note to one classmate, signed or anonymous. Anonymous notes store no sender at all, so nobody (admins included) can tell who wrote them. Only the recipient can read or delete a note, and unread notes show as a badge on the profile tab.
 - **Mixtape.** A persistent player dressed as a cassette deck. Any classmate can add a tape: YouTube or YouTube Music videos and playlists, or Spotify tracks, albums, playlists and `spotify:` links. Titles are fetched automatically. It keeps playing across pages, moves to the next tape when one ends, and pauses when a video starts.
-- **Videos.** Classmates paste YouTube, Instagram, Facebook or X links; each plays in place on click. Organizers' picks from `content/event.json` come first.
+- **Videos.** Classmates paste YouTube, Instagram, Facebook or X links; each plays in place on click. Organizers' picks from the event details come first.
 - **Quotes wall ("Who said it?").** Things teachers and classmates used to say. Anyone can add a quote (who said it and when are optional) and comment on any quote.
 - **Memories.** Photos from the shared Google Photos album, shown as a grid with a full-screen viewer. Google has no API for shared albums, so the server reads the album page itself (cached for 30 minutes) and falls back to a plain link if that stops working.
-- **Event.** Countdown, time and place, schedule and how many people have said they are coming, all from `content/event.json`.
+- **Event.** Countdown, time and place, schedule and how many people have said they are coming, all from the event details (see Configuration).
 - **Feedback button.** Messages to the organizers are saved first, then emailed when email is set up.
 - **Admin ("Principal's Office").**
   - Overview: roster size, claimed profiles, RSVPs, faces named, notes sent (counts only), tapes, videos, quotes, visits.
@@ -51,7 +51,7 @@ Node 24, Hono, SQLite (`node:sqlite`) and sharp on the server. React 19, React R
 ```
 server/        Hono app, routes and data access (one file per area: people, scenes, tapes, videos, quotes, notes, ...)
 web/src/       React SPA: routes/ for pages, components/ for shared pieces
-content/       event.json: event details, schedule, mixtape, organizers' videos
+content/       event.json: placeholder event details, the shape EVENT_JSON follows
 scripts/       seed.ts: demo data for local development
 tests/         Vitest suites for the API, admin routes, portrait wall and client helpers
 ```
@@ -79,13 +79,14 @@ Real class photos are uploaded through the admin page and stored in `DATA_DIR`. 
 | `DATA_DIR` | Where the database, tiles and uploads live (`/data` in production) |
 | `PORT` | Server port (default `3000`) |
 | `GOOGLE_PHOTOS_ALBUM_URL` | Full shared album link. Kept out of git because the link itself grants access |
-| `YOUTUBE_PLAYLIST_ID` | Optional override for `music.youtubePlaylistId` in `content/event.json` |
+| `EVENT_JSON` | The real event details as JSON, in the same shape as `content/event.json`. Without it the site shows that file's placeholders |
+| `YOUTUBE_PLAYLIST_ID` | Optional override for `music.youtubePlaylistId` in the event details |
 | `RESEND_API_KEY` | Optional. Turns on email (sign-in links and feedback) |
 | `EMAIL_FROM` | Sender address. Resend's default test sender only delivers to your own Resend account, so classmates need a verified domain |
 | `FEEDBACK_TO` | Where feedback messages are emailed |
 | `PUBLIC_URL` | The site's address, for links in emails. Defaults to the Railway domain, then to the request's address |
 
-Event details, schedule, the house mixtape and the organizers' video list are in `content/event.json`.
+Event details, schedule, the house mixtape and the organizers' video list come from `EVENT_JSON`. They stay out of git so the repo doesn't publish the date, venue or schedule; `content/event.json` holds placeholder values that show the expected shape. In a local `.env`, wrap the JSON in single quotes and it can span several lines.
 
 ## Deployment (Railway)
 
@@ -94,7 +95,7 @@ Built from the `Dockerfile`. One service with a volume mounted at `/data`, the v
 ```sh
 railway init
 railway volume add --mount-path /data
-railway variable set CLASS_PASSCODE=... ADMIN_PASSCODE=... SESSION_SECRET=... GOOGLE_PHOTOS_ALBUM_URL=...
+railway variable set CLASS_PASSCODE=... ADMIN_PASSCODE=... SESSION_SECRET=... GOOGLE_PHOTOS_ALBUM_URL=... EVENT_JSON="$(cat event.json)"
 railway up
 railway domain
 ```
