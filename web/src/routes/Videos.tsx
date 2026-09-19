@@ -81,40 +81,44 @@ function Tape({ video, onRemove }: { video: Video; onRemove?: () => void }) {
   )
 }
 
-/** A home-recorded VHS cassette for the page header, drawn like the mixtape cassette. */
+/**
+ * A home-recorded VHS tape for the page header, drawn in the mixtape cassette's style. What makes it read as VHS
+ * rather than an audio cassette: the hinged flap along the whole front edge, big tape rolls (one full, one nearly
+ * empty) on toothed hubs, the label panel in the middle and the "insert this way" arrow.
+ */
 function VhsCassette({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 320 180" className={className} aria-hidden="true">
-      <rect x="4" y="4" width="312" height="172" rx="10" fill="#262626" stroke="#151515" strokeWidth="6" />
-      <path d="M8 38h304" stroke="#3f3f3f" strokeWidth="3" />
-      <rect x="26" y="14" width="268" height="60" rx="4" fill="#fdf6e3" stroke="#151515" strokeWidth="3" />
-      <path d="M28 24h264" stroke="#ec4899" strokeWidth="6" />
-      <path d="M28 31h264" stroke="#14b8a6" strokeWidth="4" />
-      <text x="160" y="62" textAnchor="middle" fontFamily="Permanent Marker, Gveret Levin, Rubik, cursive" fontSize="22" fill="#151515">
+    <svg viewBox="0 0 300 176" className={className} aria-hidden="true">
+      <rect x="4" y="4" width="292" height="168" rx="12" fill="#8b5cf6" stroke="#151515" strokeWidth="6" />
+      <path d="M22 20l13 8-13 8z" fill="#fdf6e3" stroke="#151515" strokeWidth="2.5" strokeLinejoin="round" />
+      <rect x="56" y="16" width="188" height="44" rx="6" fill="#fdf6e3" stroke="#151515" strokeWidth="5" />
+      <path d="M66 27h56" stroke="#14b8a6" strokeWidth="6" strokeLinecap="round" />
+      <text x="150" y="51" textAnchor="middle" fontFamily="Permanent Marker, Gveret Levin, Rubik, cursive" fontSize="19" fill="#151515">
         לא למחוק!
       </text>
-      <text x="284" y="68" textAnchor="end" direction="ltr" fontFamily="VT323, monospace" fontSize="14" fill="#151515">
-        T-120
-      </text>
-      <rect x="72" y="88" width="176" height="66" rx="6" fill="#0d0d0d" stroke="#fdf6e3" strokeWidth="2" />
-      <path d="M110 121L210 131" stroke="#5a3d25" strokeWidth="3" />
+      <rect x="34" y="68" width="232" height="66" rx="33" fill="#151515" />
       {[
-        [110, 30],
-        [210, 18],
+        [92, 30],
+        [208, 17],
       ].map(([cx, r]) => (
         <g key={cx}>
-          <circle cx={cx} cy="121" r={r} fill="#5a3d25" />
-          <circle cx={cx} cy="121" r="10" fill="#fdf6e3" stroke="#151515" strokeWidth="2" />
+          <circle cx={cx} cy="101" r={r} fill="#6b4a2f" />
+          <circle cx={cx} cy="101" r="13" fill="#fdf6e3" stroke="#151515" strokeWidth="3" />
           {[0, 60, 120].map((angle) => (
-            <rect key={angle} x={cx - 1.5} y="113" width="3" height="16" fill="#151515" transform={`rotate(${angle} ${cx} 121)`} />
+            <rect key={angle} x={cx - 2.5} y="88" width="5" height="26" fill="#151515" transform={`rotate(${angle} ${cx} 101)`} />
           ))}
+          <circle cx={cx} cy="101" r="4.5" fill="#fdf6e3" stroke="#151515" strokeWidth="2.5" />
         </g>
       ))}
-      <text x="40" y="164" direction="ltr" fontFamily="VT323, monospace" fontSize="18" fill="#fdf6e3">
+      <path d="M4 142h292v18a12 12 0 0 1-12 12H16a12 12 0 0 1-12-12z" fill="#facc15" stroke="#151515" strokeWidth="5" strokeLinejoin="round" />
+      {[138, 146, 154, 162].map((x) => (
+        <path key={x} d={`M${x} 150v14`} stroke="#151515" strokeWidth="3" strokeLinecap="round" />
+      ))}
+      <text x="20" y="165" direction="ltr" fontFamily="Bowlby One, Rubik, sans-serif" fontSize="17" fill="#151515">
         VHS
       </text>
-      <text x="280" y="164" textAnchor="end" direction="ltr" fontFamily="VT323, monospace" fontSize="18" fill="#facc15">
-        SP
+      <text x="280" y="166" textAnchor="end" direction="ltr" fontFamily="VT323, monospace" fontSize="20" fill="#151515">
+        T-120
       </text>
     </svg>
   )
@@ -240,7 +244,7 @@ export default function Videos() {
           <h1 className="heading">ספריית הווידאו</h1>
           <p className="max-w-2xl text-lg">סרטונים ביתיים, טקסים והצגות. נא להחזיר את הקלטת להתחלה.</p>
         </div>
-        <VhsCassette className="w-28 shrink-0 -rotate-6 drop-shadow-[5px_5px_0_var(--color-pink)] sm:w-60" />
+        <VhsCassette className="w-28 shrink-0 -rotate-6 drop-shadow-[4px_4px_0_var(--color-ink)] sm:w-60" />
       </header>
       <AddVideo onAdded={load} />
       {error && <p className="font-bold text-pink">{error}</p>}
