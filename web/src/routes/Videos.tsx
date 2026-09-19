@@ -81,6 +81,45 @@ function Tape({ video, onRemove }: { video: Video; onRemove?: () => void }) {
   )
 }
 
+/** A home-recorded VHS cassette for the page header, drawn like the mixtape cassette. */
+function VhsCassette({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 320 180" className={className} aria-hidden="true">
+      <rect x="4" y="4" width="312" height="172" rx="10" fill="#262626" stroke="#151515" strokeWidth="6" />
+      <path d="M8 38h304" stroke="#3f3f3f" strokeWidth="3" />
+      <rect x="26" y="14" width="268" height="60" rx="4" fill="#fdf6e3" stroke="#151515" strokeWidth="3" />
+      <path d="M28 24h264" stroke="#ec4899" strokeWidth="6" />
+      <path d="M28 31h264" stroke="#14b8a6" strokeWidth="4" />
+      <text x="160" y="62" textAnchor="middle" fontFamily="Permanent Marker, Gveret Levin, Rubik, cursive" fontSize="22" fill="#151515">
+        לא למחוק!
+      </text>
+      <text x="284" y="68" textAnchor="end" direction="ltr" fontFamily="VT323, monospace" fontSize="14" fill="#151515">
+        T-120
+      </text>
+      <rect x="72" y="88" width="176" height="66" rx="6" fill="#0d0d0d" stroke="#fdf6e3" strokeWidth="2" />
+      <path d="M110 121L210 131" stroke="#5a3d25" strokeWidth="3" />
+      {[
+        [110, 30],
+        [210, 18],
+      ].map(([cx, r]) => (
+        <g key={cx}>
+          <circle cx={cx} cy="121" r={r} fill="#5a3d25" />
+          <circle cx={cx} cy="121" r="10" fill="#fdf6e3" stroke="#151515" strokeWidth="2" />
+          {[0, 60, 120].map((angle) => (
+            <rect key={angle} x={cx - 1.5} y="113" width="3" height="16" fill="#151515" transform={`rotate(${angle} ${cx} 121)`} />
+          ))}
+        </g>
+      ))}
+      <text x="40" y="164" direction="ltr" fontFamily="VT323, monospace" fontSize="18" fill="#fdf6e3">
+        VHS
+      </text>
+      <text x="280" y="164" textAnchor="end" direction="ltr" fontFamily="VT323, monospace" fontSize="18" fill="#facc15">
+        SP
+      </text>
+    </svg>
+  )
+}
+
 function AddVideo({ onAdded }: { onAdded: () => Promise<unknown> }) {
   const { me } = useStore()
   const [open, setOpen] = useState(false)
@@ -196,8 +235,13 @@ export default function Videos() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-8">
-      <h1 className="heading">ספריית הווידאו</h1>
-      <p className="max-w-2xl text-lg">סרטונים ביתיים, טקסים והצגות. נא להחזיר את הקלטת להתחלה.</p>
+      <header className="flex items-center justify-between gap-4">
+        <div className="space-y-6">
+          <h1 className="heading">ספריית הווידאו</h1>
+          <p className="max-w-2xl text-lg">סרטונים ביתיים, טקסים והצגות. נא להחזיר את הקלטת להתחלה.</p>
+        </div>
+        <VhsCassette className="w-28 shrink-0 -rotate-6 drop-shadow-[5px_5px_0_var(--color-pink)] sm:w-60" />
+      </header>
       <AddVideo onAdded={load} />
       {error && <p className="font-bold text-pink">{error}</p>}
       {videos?.length === 0 ? (
