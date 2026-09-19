@@ -25,7 +25,7 @@ import { adminRoutes } from './admin.ts'
 import { albumPhotos } from './album.ts'
 import { addTape, listTapes } from './tapes.ts'
 import { addVideo, listVideos } from './videos.ts'
-import { addQuote, addQuoteComment, listQuotes } from './quotes.ts'
+import { addQuote, addQuoteComment, listQuotes, reactToQuote } from './quotes.ts'
 import { addFeedback, resendSender } from './feedback.ts'
 import { resendMailer, type Mailer } from './email.ts'
 import { redeemSignInLink, sendSignInLink } from './recovery.ts'
@@ -153,7 +153,23 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   })
 
   // The quotes wall: things teachers and classmates used to say. Anyone can add one or comment; organizers remove.
-  app.get('/api/quotes', (c) => c.json(listQuotes(db)))
+  // Reactions count once per person: the signed-in profile, else the random key the visitor's browser keeps.
+  const reactorOf = (c: Context): string | null => {
+    const me = owner(c)
+    if (me) return `p${me.id}`
+    const key = c.req.header('x-reactor') ?? ''
+    return /^[A-Za-z0-9-]{16,64}$/.test(key) ? `b${key}` : null
+  }
+
+  app.get('/api/quotes', (c) => c.json(listQuotes(db, reactorOf(c))))
+
+  app.put('/api/quotes/:id/reaction', async (c) => {
+    try {
+      return c.json(reactToQuote(db, Number(c.req.param('id')), reactorOf(c), await c.req.json().catch(() => null)))
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+  })
 
   app.post('/api/quotes', async (c) => {
     try {

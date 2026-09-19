@@ -446,6 +446,45 @@ describe('video library', () => {
   })
 })
 
+describe('quote reactions', () => {
+  const as = (reactor: string) => ({ Cookie: member, 'x-reactor': reactor })
+  const ANNA = 'anna-browser-key-0001'
+  const BEN = 'ben-browser-key-00002'
+
+  it('counts one reaction per person: a new pick replaces the old one, and picking nothing takes it back', async () => {
+    const quote = await (await app.request('/api/quotes', json('POST', { text: 'Quiet in the back!' }, { Cookie: member }))).json()
+    expect(quote).toMatchObject({ reactions: [], myReaction: null })
+    const react = (reactor: string, emoji: string) => app.request(`/api/quotes/${quote.id}/reaction`, json('PUT', { emoji }, as(reactor)))
+
+    expect(await (await react(ANNA, '😂')).json()).toEqual({ reactions: [{ emoji: '😂', count: 1 }], myReaction: '😂' })
+    await react(BEN, '😂')
+    await react(BEN, '❤️')
+    expect(await (await react(ANNA, '😂')).json()).toEqual({ reactions: [{ emoji: '😂', count: 1 }, { emoji: '❤️', count: 1 }], myReaction: '😂' })
+
+    // Everyone sees the counters; only Ben sees Ben's pick.
+    const seenBy = async (reactor: string) => (await (await app.request('/api/quotes', { headers: as(reactor) })).json()).find((q: { id: number }) => q.id === quote.id)
+    expect(await seenBy(BEN)).toMatchObject({ reactions: [{ emoji: '😂', count: 1 }, { emoji: '❤️', count: 1 }], myReaction: '❤️' })
+    expect((await seenBy('someone-else-key-0003')).myReaction).toBeNull()
+
+    expect(await (await react(ANNA, '')).json()).toEqual({ reactions: [{ emoji: '❤️', count: 1 }], myReaction: null })
+  })
+
+  it('rejects an emoji that is not on offer, a missing browser key, a missing quote, and visitors without the passcode', async () => {
+    const quote = await (await app.request('/api/quotes', json('POST', { text: 'Books closed' }, { Cookie: member }))).json()
+    expect((await app.request(`/api/quotes/${quote.id}/reaction`, json('PUT', { emoji: '💩' }, as(ANNA)))).status).toBe(400)
+    expect((await app.request(`/api/quotes/${quote.id}/reaction`, json('PUT', { emoji: '👍' }, { Cookie: member }))).status).toBe(400)
+    expect((await app.request('/api/quotes/99999/reaction', json('PUT', { emoji: '👍' }, as(ANNA)))).status).toBe(400)
+    expect((await app.request(`/api/quotes/${quote.id}/reaction`, json('PUT', { emoji: '👍' }, { 'x-reactor': ANNA }))).status).toBe(401)
+  })
+
+  it('removing a quote removes its reactions', async () => {
+    const quote = await (await app.request('/api/quotes', json('POST', { text: 'Last warning' }, { Cookie: member }))).json()
+    await app.request(`/api/quotes/${quote.id}/reaction`, json('PUT', { emoji: '🙏' }, as(ANNA)))
+    await app.request(`/api/admin/quotes/${quote.id}`, { method: 'DELETE', headers: { Cookie: admin } })
+    expect((db.prepare('SELECT COUNT(*) AS n FROM quote_reactions WHERE quote_id = ?').get(quote.id) as { n: number }).n).toBe(0)
+  })
+})
+
 describe('quotes wall', () => {
   it('lets any classmate add a quote and comment on it, rejects empty ones, and only organizers remove them', async () => {
     expect((await app.request('/api/quotes')).status).toBe(401)

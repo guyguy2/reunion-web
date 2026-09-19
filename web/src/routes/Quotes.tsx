@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { api, type Quote } from '../api.ts'
+import { api, type Quote, type QuoteReaction } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { LAYER, useEscape } from '../useEscape.ts'
 
@@ -105,6 +105,60 @@ function AddComment({ quoteId, onAdded }: { quoteId: number; onAdded: () => Prom
   )
 }
 
+const REACTIONS = ['😂', '❤️', '👍', '😮', '😢', '🙏']
+
+/**
+ * Reactions like in a chat app: a counter pill for every emoji somebody picked (yours is lit), and a button that
+ * opens the row to pick from. One per person; picking yours again takes it back.
+ */
+function Reactions({ quote }: { quote: Quote }) {
+  const [state, setState] = useState<{ reactions: QuoteReaction[]; myReaction: string | null }>({ reactions: quote.reactions, myReaction: quote.myReaction })
+  const [picking, setPicking] = useState(false)
+  useEscape(picking && (() => setPicking(false)), LAYER.drawer)
+  // The wall reloads after a comment, bringing fresh counts with it.
+  useEffect(() => setState({ reactions: quote.reactions, myReaction: quote.myReaction }), [quote.reactions, quote.myReaction])
+
+  const react = async (emoji: string) => {
+    setPicking(false)
+    try {
+      setState(await api(`/api/quotes/${quote.id}/reaction`, { method: 'PUT', json: { emoji: emoji === state.myReaction ? '' : emoji } }))
+    } catch {
+      /* the counters simply stay as they were */
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {state.reactions.map((r) => (
+        <button
+          key={r.emoji}
+          type="button"
+          onClick={() => react(r.emoji)}
+          aria-pressed={state.myReaction === r.emoji}
+          aria-label={`${r.emoji} ${r.count}`}
+          className={`flex cursor-pointer items-center gap-1 rounded-full border-2 border-ink px-2 py-0.5 text-sm font-bold text-ink ${state.myReaction === r.emoji ? 'bg-sun' : 'bg-white'}`}
+        >
+          <span className="text-base leading-none">{r.emoji}</span>
+          {r.count}
+        </button>
+      ))}
+      {picking ? (
+        <span className="flex gap-0.5 rounded-full border-2 border-ink bg-white px-1.5 py-0.5 shadow-chunk" role="group" aria-label="בחירת תגובה">
+          {REACTIONS.map((emoji) => (
+            <button key={emoji} type="button" onClick={() => react(emoji)} className={`cursor-pointer rounded-full p-1 text-2xl leading-none transition-transform hover:scale-125 ${state.myReaction === emoji ? 'bg-sun' : ''}`} aria-label={emoji}>
+              {emoji}
+            </button>
+          ))}
+        </span>
+      ) : (
+        <button type="button" onClick={() => setPicking(true)} className="flex cursor-pointer items-center gap-1 rounded-full border-2 border-ink bg-white px-2 py-0.5 text-sm font-bold text-ink" aria-label="הוספת תגובת אימוג׳י">
+          <span className="text-base leading-none grayscale">🙂</span>+
+        </button>
+      )}
+    </div>
+  )
+}
+
 function QuoteCard({ quote, onChanged, onRemove, onRemoveComment }: {
   quote: Quote
   onChanged: () => Promise<unknown>
@@ -137,6 +191,7 @@ function QuoteCard({ quote, onChanged, onRemove, onRemoveComment }: {
         </div>
       </div>
       <div className="space-y-3 border-t-[3px] border-ink bg-paper p-4">
+        <Reactions quote={quote} />
         {quote.comments.length > 0 && (
           <ul className="space-y-2">
             {quote.comments.map((c, i) => (
