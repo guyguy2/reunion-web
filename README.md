@@ -6,7 +6,7 @@ The centerpiece is a zoomable "yearbook": the class composite posters from 1990,
 
 ## Features
 
-- **Passcode gate.** One shared class passcode, checked on the server. Nothing (API, pictures, uploads) is served without it. A separate admin passcode unlocks the organizer tools. Every response is `noindex`.
+- **Passcode gate.** One shared class passcode, checked on the server. Nothing (API, pictures, uploads) is served without it, except the old school postcard on the passcode screen. A separate admin passcode unlocks the organizer tools. Every response is `noindex`.
 - **Yearbook viewer.** OpenSeadragon deep zoom, one tab per picture, search that flies to a person, deep link per person (`/p/:id`), "through the years" strip cropped from each poster, then/now slider.
 - **Crowd-sourced names.** Unnamed faces can be named by any classmate. Claiming a profile returns a private edit link; only its hash is stored. Organizers can reset a claim. A profile owner can take their name off a wrongly tagged face ("That's not me"), which puts it back to unnamed; organizers can do the same for anyone.
 - **Admin ("Principal's Office").** Upload pictures (auto-tiled), auto-detect faces in the browser (MediaPipe), draw/move/delete boxes (Annotorious), assign names, add people, CSV roster import, rebuild the generated portrait wall, load demo data into an empty site, download a JSON backup of every profile, picture and face tag (no image files, sign-in secrets or private notes).
