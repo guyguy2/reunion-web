@@ -134,6 +134,37 @@ describe('roster import', () => {
     expect(getPerson(db, alreadyHere)).toMatchObject({ name: 'Named By A Classmate', gender: 'm' })
   })
 
+  it('never replaces a name somebody typed with a poster caption, but a corrected caption does replace a caption', () => {
+    const typed = insertPerson(db, { name: 'Dana Typed-Fullname' })
+    const caption = insertPerson(db, { name: 'ד. פלוני' })
+    const a = insertTag(db, scene93, { x: 100, y: 500, w: 50, h: 60 }, typed)
+    const b = insertTag(db, scene93, { x: 300, y: 500, w: 50, h: 60 }, caption)
+    const result = importRoster(db, {
+      version: 1,
+      people: [
+        { key: 't', name: 'ד. טייפד', gender: null },
+        { key: 'c', name: 'דנה פלוני', gender: null },
+      ],
+      scenes: [
+        {
+          title: '1993 - junior high',
+          year: 1993,
+          width: 1000,
+          height: 800,
+          faces: [
+            { x: 100, y: 500, w: 50, h: 60, caption: 'ד. טייפד', classLabel: null, staff: false, person: 't' },
+            { x: 300, y: 500, w: 50, h: 60, caption: 'ד. פלוני', classLabel: null, staff: false, person: 'c' },
+          ],
+        },
+      ],
+    })
+    expect(result).toMatchObject({ peopleAdded: 0, peopleUpdated: 1 })
+    expect(getPerson(db, typed)!.name).toBe('Dana Typed-Fullname')
+    expect(getPerson(db, caption)!.name).toBe('דנה פלוני')
+    db.prepare('DELETE FROM tags WHERE id IN (?, ?)').run(a, b)
+    db.prepare('DELETE FROM people WHERE id IN (?, ?)').run(typed, caption)
+  })
+
   it('can be run again without adding anyone twice', () => {
     const before = (db.prepare('SELECT COUNT(*) AS n FROM people').get() as { n: number }).n
     expect(importRoster(db, roster)).toMatchObject({ peopleAdded: 0, namesKept: 3 })

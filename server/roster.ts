@@ -56,6 +56,11 @@ export function exportRoster(db: Db): RosterFile {
   return { version: 1, people, scenes }
 }
 
+/** An initial, a dot and a surname, as printed under the faces. */
+function isPosterName(name: string): boolean {
+  return /^\S\.\s/.test(name)
+}
+
 function overlap(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): number {
   const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
   const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
@@ -79,7 +84,7 @@ export function parseRoster(body: unknown): RosterFile {
 
 /**
  * Applies a roster file. Safe to run again: a face that already has a name keeps it, and the file's person
- * is taken to be that same person. Claimed profiles are never renamed.
+ * is taken to be that same person. Claimed profiles and names that people typed are never renamed.
  */
 export function importRoster(db: Db, file: RosterFile): ImportResult {
   const result: ImportResult = { facesMatched: 0, facesUnmatched: 0, peopleAdded: 0, peopleUpdated: 0, namesKept: 0 }
@@ -124,7 +129,8 @@ export function importRoster(db: Db, file: RosterFile): ImportResult {
       const existing = getPerson(db, id)
       if (!incoming || !existing) continue
       const fields: Record<string, string | null> = {}
-      if (!existing.claimed_at && existing.name !== incoming.name.trim()) fields.name = incoming.name.trim()
+      // Only a name that is itself a poster caption ("X. surname") gives way. A name a person typed always stays.
+      if (!existing.claimed_at && isPosterName(existing.name) && existing.name !== incoming.name.trim()) fields.name = incoming.name.trim()
       if (!existing.gender && incoming.gender) fields.gender = incoming.gender
       if (Object.keys(fields).length) (updatePerson(db, id, fields), result.peopleUpdated++)
     }

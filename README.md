@@ -42,8 +42,8 @@ Taken with the built-in demo data (generated cartoon classmates, not real people
 - **Admin ("Principal's Office").**
   - Overview: roster size, claimed profiles, RSVPs, faces named, notes sent (counts only), tapes, videos, quotes, visits.
   - Pictures: upload (auto-tiled), auto-detect faces in the browser (MediaPipe), draw, move and delete boxes (Annotorious), assign names, rebuild the portrait wall.
-  - People: add and edit, CSV roster import, reset a claim, mark a profile in memoriam.
-  - Class roster: the names printed under the faces (an initial and a surname) become unclaimed profiles, matched across the posters. A one-by-one review fixes a name and marks boy or girl with one tap or key; other views merge possible duplicates, name the faces that could not be read, and hide staff. Staff faces stay in the database but never reach the yearbook, the search or the counts. The reviewed roster downloads as one JSON file and uploads on another copy of the site, where faces are matched by picture and position and names people already gave are kept.
+  - People: add and edit, CSV roster import, reset a claim.
+  - Class roster: the names printed under the faces (an initial and a surname) become unclaimed profiles, matched across the posters. A one-by-one review fixes a name and marks boy or girl with one tap or key; other views merge possible duplicates, name the faces that could not be read, and hide staff. Staff faces stay in the database but never reach the yearbook, the search or the counts. The reviewed roster downloads as one JSON file and uploads on another copy of the site, where faces are matched by picture and position and names people already gave are kept: only a name that is itself a poster caption is ever replaced.
   - Moderation: remove any tape, video, quote or comment, and read the feedback inbox.
   - Data: load demo data into an empty site, download a JSON backup of every profile, picture and face tag (no image files, sign-in secrets or notes).
 
