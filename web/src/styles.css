@@ -96,108 +96,6 @@ body {
   }
 }
 
-/* ---- Scene viewer ---- */
-.face-tag {
-  box-sizing: border-box;
-  border: 2px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: border-color 0.12s, background-color 0.12s;
-}
-.face-tag:hover,
-.face-tag:focus-visible {
-  border-color: var(--color-sun);
-  background-color: rgb(250 204 21 / 0.18);
-  outline: none;
-}
-/* Unnamed faces stay invisible until hovered, so the poster is not covered in outlines. */
-.face-tag.unknown:hover {
-  border-style: dashed;
-  border-color: var(--color-pink);
-  background-color: rgb(236 72 153 / 0.2);
-}
-.face-tag.selected {
-  border: 3px solid var(--color-pink);
-  box-shadow: 0 0 0 3px var(--color-ink), 0 0 0 9999px rgb(0 0 0 / 0.35);
-  z-index: 2;
-}
-.face-tag.mine {
-  border-color: var(--color-teal);
-}
-.face-tag:hover {
-  z-index: 5;
-}
-/* Comic speech bubble with a magnified face. */
-.face-tag .bubble {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 14px);
-  width: 132px;
-  padding: 6px 6px 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  text-align: center;
-  pointer-events: none;
-  background: #fff;
-  border: 3px solid var(--color-ink);
-  border-radius: 14px;
-  box-shadow: var(--shadow-chunk);
-  opacity: 0;
-  transform: translateX(-50%) scale(0.6);
-  transform-origin: bottom center;
-  transition: opacity 0.12s, transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.face-tag .bubble::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 100%;
-  width: 14px;
-  height: 14px;
-  background: #fff;
-  border-right: 3px solid var(--color-ink);
-  border-bottom: 3px solid var(--color-ink);
-  transform: translate(-50%, -6px) rotate(45deg);
-}
-.face-tag .bubble.below {
-  bottom: auto;
-  top: calc(100% + 14px);
-  transform-origin: top center;
-}
-.face-tag .bubble.below::after {
-  top: auto;
-  bottom: 100%;
-  border: 0;
-  border-left: 3px solid var(--color-ink);
-  border-top: 3px solid var(--color-ink);
-  transform: translate(-50%, 6px) rotate(45deg);
-}
-.face-tag.selected .bubble {
-  display: none;
-}
-.face-tag:hover .bubble {
-  opacity: 1;
-  transform: translateX(-50%) scale(1);
-}
-.face-tag .bubble img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border: 2px solid var(--color-ink);
-  border-radius: 8px;
-  background: var(--color-paper);
-}
-.face-tag .bubble strong {
-  font: 700 14px/1.2 var(--font-marker);
-  overflow-wrap: anywhere;
-}
-.face-tag .bubble span {
-  font: 500 11px/1.2 var(--font-sans);
-  opacity: 0.7;
-}
-
 /* ---- Cassette ---- */
 @keyframes reel {
   to {
@@ -212,23 +110,9 @@ body {
   animation: reel 2.4s linear infinite;
 }
 
-@keyframes blink {
-  50% {
-    opacity: 0.2;
-  }
-}
-.rec-dot {
-  animation: blink 1.2s steps(1) infinite;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .playing .reel,
-  .rec-dot {
+  .playing .reel {
     animation: none;
-  }
-  .face-tag .bubble {
-    transition: opacity 0.12s;
-    transform: translateX(-50%);
   }
   .btn {
     transition: none;

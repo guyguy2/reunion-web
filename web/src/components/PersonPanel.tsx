@@ -15,13 +15,20 @@ const ATTENDING = {
 
 export function Drawer({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   useEscape(onClose, LAYER.drawer)
+  // A sheet from the bottom on phones, a centered window on wider screens. Clicking outside closes it.
   return (
-    <section className="chunk absolute inset-x-2 bottom-16 z-10 max-h-[62%] overflow-y-auto p-4 shadow-chunk-lg sm:inset-x-auto sm:end-16 sm:top-3 sm:bottom-3 sm:max-h-none sm:w-96">
-      <button className="btn btn-plain btn-sm pixel absolute end-2 top-2 text-lg leading-none" onClick={onClose} aria-label="סגירה">
-        X
-      </button>
-      {children}
-    </section>
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-ink/50 sm:items-center sm:p-4" onClick={onClose}>
+      <section
+        className="chunk relative max-h-[88dvh] w-full overflow-y-auto rounded-b-none p-4 shadow-chunk-lg sm:max-w-md sm:rounded-b-xl"
+        role="dialog"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button className="btn btn-plain btn-sm pixel absolute end-2 top-2 text-lg leading-none" onClick={onClose} aria-label="סגירה">
+          X
+        </button>
+        {children}
+      </section>
+    </div>
   )
 }
 
@@ -32,7 +39,7 @@ export function appearances(scenes: Scene[], personId: number): { scene: Scene; 
     .flatMap((scene) => scene.tags.filter((t) => t.personId === personId).slice(0, 1).map((tag) => ({ scene, tag })))
 }
 
-export function PersonPanel({ person, onClose, onJump }: { person: Person; onClose: () => void; onJump: (scene: Scene) => void }) {
+export function PersonPanel({ person, onClose }: { person: Person; onClose: () => void }) {
   const { scenes, me, adoptToken, reload } = useStore()
   const navigate = useNavigate()
   const [error, setError] = useState('')
@@ -122,12 +129,12 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
           <h3 className="label">לאורך השנים</h3>
           <div className="flex gap-3 overflow-x-auto pb-2">
             {faces.map(({ scene, tag }) => (
-              <button key={tag.id} onClick={() => onJump(scene)} className="polaroid w-24 shrink-0 cursor-pointer pb-1 text-center hover:-translate-y-0.5">
+              <div key={tag.id} className="polaroid w-24 shrink-0 pb-1 text-center">
                 <img src={faceUrl(tag)} alt="" className="aspect-square w-full object-cover" loading="lazy" />
                 <span className="marker block pt-1 text-xs leading-tight" dir="auto">
                   {scene.title}
                 </span>
-              </button>
+              </div>
             ))}
           </div>
         </div>

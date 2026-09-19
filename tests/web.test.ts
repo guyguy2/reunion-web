@@ -1,11 +1,12 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { Tape } from '../web/src/api.ts'
+import type { Person, Scene, Tape } from '../web/src/api.ts'
 import ContactLinks from '../web/src/components/ContactLinks.tsx'
 import { NoteCard } from '../web/src/components/Notes.tsx'
 import { buildShelf, canSkip, nextTape, pickTape, spotifyUri, tapeFinished } from '../web/src/tapes.ts'
 import { embedUrl, isTallEmbed, thumbnailUrl } from '../web/src/videos.ts'
+import { tilePhoto, unknownFaces } from '../web/src/yearbook.ts'
 
 type Links = { email: string | null; instagram: string | null; linkedin: string | null; facebook?: string | null; website?: string | null; phone?: string | null; x?: string | null }
 const render = (person: Links) => renderToStaticMarkup(createElement(ContactLinks, { person: { facebook: null, website: null, phone: null, x: null, ...person } }))
@@ -56,6 +57,24 @@ describe('notes', () => {
     expect(card({ ...note, read: true })).toContain('Meet me by the lockers')
     expect(card({ ...note, read: true })).toContain('notebook-paper')
     expect(card({ ...note, read: true, from: { id: 3, name: 'Guy' } })).toContain('>Guy</p>')
+  })
+})
+
+describe('yearbook grid', () => {
+  const tag = (id: number, sceneId: number, personId: number | null) => ({ id, sceneId, personId, x: 10, y: 10, w: 50, h: 60 })
+  const scene = (id: number, kind: Scene['kind'], tags: ReturnType<typeof tag>[]): Scene => ({ id, slug: `s${id}`, title: `S${id}`, kind, width: 1000, height: 800, dzi: '', tags })
+  const scenes = [scene(1, 'group', [tag(11, 1, 7), tag(12, 1, null)]), scene(2, 'group', [tag(21, 2, 7), tag(22, 2, null)]), scene(3, 'mosaic', [tag(31, 3, null)])]
+  const person = (extra: Partial<Person> = {}) => ({ id: 7, thenPhoto: null, nowPhoto: null, ...extra }) as Person
+
+  it('shows your own 90s photo first, then your face on the newest class photo, then today', () => {
+    expect(tilePhoto(person({ thenPhoto: '/media/then.webp' }), scenes)).toBe('/media/then.webp')
+    expect(tilePhoto(person(), scenes)).toMatch(/^\/api\/tags\/21\/face/)
+    expect(tilePhoto(person({ id: 8, nowPhoto: '/media/now.webp' }), scenes)).toBe('/media/now.webp')
+    expect(tilePhoto(person({ id: 8 }), scenes)).toBeNull()
+  })
+
+  it('lists unnamed faces from class photos only, newest photo first', () => {
+    expect(unknownFaces(scenes).map((t) => t.id)).toEqual([22, 12])
   })
 })
 
