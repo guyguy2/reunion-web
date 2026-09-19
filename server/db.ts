@@ -12,6 +12,10 @@ export interface PersonRow {
   email: string | null
   instagram: string | null
   linkedin: string | null
+  facebook: string | null
+  website: string | null
+  phone: string | null
+  x: string | null
   city: string | null
   bio: string | null
   quote: string | null
@@ -22,6 +26,10 @@ export interface PersonRow {
   show_email: number
   show_instagram: number
   show_linkedin: number
+  show_facebook: number
+  show_website: number
+  show_phone: number
+  show_x: number
   claimed_at: string | null
   edit_token_hash: string | null
 }
@@ -45,6 +53,26 @@ export interface TagRow {
   y: number
   w: number
   h: number
+}
+
+export interface TapeRow {
+  id: number
+  provider: 'youtube' | 'spotify'
+  kind: string
+  external_id: string
+  title: string
+  added_by: string | null
+  created_at: string
+}
+
+export interface VideoRow {
+  id: number
+  provider: 'youtube' | 'instagram' | 'facebook' | 'x'
+  external_id: string
+  title: string
+  note: string | null
+  added_by: string | null
+  created_at: string
 }
 
 // Each entry runs once, in order. Append only; never edit a shipped migration.
@@ -97,6 +125,44 @@ const MIGRATIONS: string[] = [
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+  `,
+  `
+  CREATE TABLE tapes (
+    id INTEGER PRIMARY KEY,
+    provider TEXT NOT NULL CHECK (provider IN ('youtube', 'spotify')),
+    kind TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    added_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (provider, kind, external_id)
+  );
+  `,
+  `
+  CREATE TABLE videos (
+    id INTEGER PRIMARY KEY,
+    provider TEXT NOT NULL CHECK (provider IN ('youtube', 'instagram', 'facebook', 'x')),
+    external_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    note TEXT,
+    added_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (provider, external_id)
+  );
+  `,
+  `
+  ALTER TABLE people ADD COLUMN facebook TEXT;
+  ALTER TABLE people ADD COLUMN website TEXT;
+  ALTER TABLE people ADD COLUMN show_facebook INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE people ADD COLUMN show_website INTEGER NOT NULL DEFAULT 1;
+  `,
+  `
+  ALTER TABLE people ADD COLUMN phone TEXT;
+  ALTER TABLE people ADD COLUMN show_phone INTEGER NOT NULL DEFAULT 1;
+  `,
+  `
+  ALTER TABLE people ADD COLUMN x TEXT;
+  ALTER TABLE people ADD COLUMN show_x INTEGER NOT NULL DEFAULT 1;
   `,
 ]
 

@@ -3,11 +3,15 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, editToken, type Person } from '../api.ts'
 import { useStore } from '../store.tsx'
 
-type Draft = Partial<Record<'name' | 'formerName' | 'nickname' | 'email' | 'instagram' | 'linkedin' | 'city' | 'bio' | 'quote', string>> & {
+type Draft = Partial<Record<'name' | 'formerName' | 'nickname' | 'email' | 'instagram' | 'linkedin' | 'facebook' | 'x' | 'website' | 'phone' | 'city' | 'bio' | 'quote', string>> & {
   attending: Person['attending']
   showEmail: boolean
   showInstagram: boolean
   showLinkedin: boolean
+  showFacebook: boolean
+  showWebsite: boolean
+  showPhone: boolean
+  showX: boolean
 }
 
 function toDraft(p: Person): Draft {
@@ -18,6 +22,10 @@ function toDraft(p: Person): Draft {
     email: p.email ?? '',
     instagram: p.instagram ?? '',
     linkedin: p.linkedin ?? '',
+    facebook: p.facebook ?? '',
+    website: p.website ?? '',
+    phone: p.phone ?? '',
+    x: p.x ?? '',
     city: p.city ?? '',
     bio: p.bio ?? '',
     quote: p.quote ?? '',
@@ -25,6 +33,10 @@ function toDraft(p: Person): Draft {
     showEmail: p.showEmail ?? true,
     showInstagram: p.showInstagram ?? true,
     showLinkedin: p.showLinkedin ?? true,
+    showFacebook: p.showFacebook ?? true,
+    showWebsite: p.showWebsite ?? true,
+    showPhone: p.showPhone ?? true,
+    showX: p.showX ?? true,
   }
 }
 
@@ -180,7 +192,7 @@ export default function Me() {
       <input id={`f-${key}`} className="field" dir="auto" value={(draft[key] as string) ?? ''} onChange={(e) => set(key, e.target.value as never)} {...props} />
     </div>
   )
-  const visibility = (key: 'showEmail' | 'showInstagram' | 'showLinkedin', label: string) => (
+  const visibility = (key: 'showEmail' | 'showInstagram' | 'showLinkedin' | 'showFacebook' | 'showWebsite' | 'showPhone' | 'showX', label: string) => (
     <label className="flex items-center gap-2 text-sm font-bold">
       <input type="checkbox" className="h-5 w-5 accent-pink" checked={draft[key]} onChange={(e) => set(key, e.target.checked)} />
       {label}
@@ -238,10 +250,18 @@ export default function Me() {
           <legend className="label px-2">יצירת קשר (רק בוגרים עם הסיסמה רואים את הפרטים)</legend>
           {text('email', 'אימייל', { type: 'email' })}
           {visibility('showEmail', 'להציג את האימייל שלי')}
+          {text('phone', 'טלפון', { type: 'tel', placeholder: '050-1234567' })}
+          {visibility('showPhone', 'להציג את הטלפון שלי')}
           {text('instagram', 'אינסטגרם', { placeholder: '@handle' })}
           {visibility('showInstagram', 'להציג את האינסטגרם שלי')}
           {text('linkedin', 'קישור ללינקדאין')}
           {visibility('showLinkedin', 'להציג את הלינקדאין שלי')}
+          {text('facebook', 'פייסבוק', { placeholder: 'שם משתמש או קישור לפרופיל' })}
+          {visibility('showFacebook', 'להציג את הפייסבוק שלי')}
+          {text('x', 'X (טוויטר)', { placeholder: '@handle' })}
+          {visibility('showX', 'להציג את ה-X שלי')}
+          {text('website', 'אתר או קישור נוסף', { placeholder: 'אתר אישי, עסק, טיקטוק...' })}
+          {visibility('showWebsite', 'להציג את הקישור')}
         </fieldset>
 
         {status && (

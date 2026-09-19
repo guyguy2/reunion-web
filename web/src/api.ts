@@ -8,6 +8,10 @@ export interface Person {
   email: string | null
   instagram: string | null
   linkedin: string | null
+  facebook: string | null
+  website: string | null
+  phone: string | null
+  x: string | null
   city: string | null
   bio: string | null
   quote: string | null
@@ -19,6 +23,10 @@ export interface Person {
   showEmail?: boolean
   showInstagram?: boolean
   showLinkedin?: boolean
+  showFacebook?: boolean
+  showWebsite?: boolean
+  showPhone?: boolean
+  showX?: boolean
 }
 
 export interface Tag {
@@ -40,6 +48,28 @@ export interface Scene {
   height: number
   dzi: string
   tags: Tag[]
+}
+
+/** A tape on the mixtape shelf. `kind` is 'video' or 'playlist' for YouTube, or a Spotify type such as 'track' or 'album'. */
+export interface Tape {
+  id: number
+  provider: 'youtube' | 'spotify'
+  kind: string
+  externalId: string
+  title: string
+  addedBy: string | null
+  url: string
+}
+
+/** A classmate's video link. The embed and the "open" link are rebuilt from `provider` and `externalId`. */
+export interface Video {
+  id: number
+  provider: 'youtube' | 'instagram' | 'facebook' | 'x'
+  externalId: string
+  title: string
+  note: string | null
+  addedBy: string | null
+  url: string
 }
 
 export interface EventInfo {

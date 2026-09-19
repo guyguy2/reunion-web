@@ -7,12 +7,16 @@ export const EDITABLE_FIELDS = [
   'email',
   'instagram',
   'linkedin',
+  'facebook',
+  'x',
+  'website',
+  'phone',
   'city',
   'bio',
   'quote',
   'attending',
 ] as const
-const FLAG_FIELDS = ['show_email', 'show_instagram', 'show_linkedin'] as const
+const FLAG_FIELDS = ['show_email', 'show_instagram', 'show_linkedin', 'show_facebook', 'show_website', 'show_phone', 'show_x'] as const
 const ADMIN_FLAG_FIELDS = ['in_memoriam'] as const
 const MAX_LENGTH: Record<string, number> = { bio: 1500, quote: 300 }
 
@@ -29,6 +33,10 @@ export function serializePerson(row: PersonRow, view: View) {
     email: full || row.show_email ? row.email : null,
     instagram: full || row.show_instagram ? row.instagram : null,
     linkedin: full || row.show_linkedin ? row.linkedin : null,
+    facebook: full || row.show_facebook ? row.facebook : null,
+    website: full || row.show_website ? row.website : null,
+    phone: full || row.show_phone ? row.phone : null,
+    x: full || row.show_x ? row.x : null,
     city: row.city,
     bio: row.bio,
     quote: row.quote,
@@ -42,6 +50,10 @@ export function serializePerson(row: PersonRow, view: View) {
           showEmail: Boolean(row.show_email),
           showInstagram: Boolean(row.show_instagram),
           showLinkedin: Boolean(row.show_linkedin),
+          showFacebook: Boolean(row.show_facebook),
+          showWebsite: Boolean(row.show_website),
+          showPhone: Boolean(row.show_phone),
+          showX: Boolean(row.show_x),
         }
       : {}),
   }
@@ -52,7 +64,27 @@ const CAMEL: Record<string, string> = {
   showEmail: 'show_email',
   showInstagram: 'show_instagram',
   showLinkedin: 'show_linkedin',
+  showFacebook: 'show_facebook',
+  showWebsite: 'show_website',
+  showPhone: 'show_phone',
+  showX: 'show_x',
   inMemoriam: 'in_memoriam',
+}
+
+/** A bare username becomes a profile link; anything else is treated as a link. */
+function cleanFacebook(value: string): string {
+  return /^[A-Za-z0-9.]+$/.test(value) && !/facebook\./i.test(value) ? `https://www.facebook.com/${value}` : withScheme(value)
+}
+
+function withScheme(value: string): string {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`
+}
+
+/** "@handle", "x.com/handle" or "twitter.com/handle" all become the bare handle. */
+function cleanX(value: string): string {
+  const handle = value.replace(/^(https?:\/\/)?((www|mobile)\.)?(x|twitter)\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '')
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(handle)) throw new Error('שם המשתמש ב-X לא תקין')
+  return handle
 }
 
 function cleanInstagram(value: string): string {
@@ -75,9 +107,13 @@ export function parsePersonInput(body: unknown, opts: { admin: boolean }): Recor
     if (value && value.length > (MAX_LENGTH[key] ?? 200)) throw new Error(`הטקסט ארוך מדי (${rawKey})`)
     if (key === 'name' && !value) throw new Error('חובה למלא שם')
     if (key === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('כתובת האימייל לא תקינה')
+    if (key === 'phone' && value && !/^\+?[\d\s().-]{7,25}$/.test(value)) throw new Error('מספר הטלפון לא תקין')
     if (key === 'attending' && value && !['yes', 'no', 'maybe'].includes(value)) throw new Error('Invalid attending value')
     if (key === 'instagram' && value) value = cleanInstagram(value)
     if (key === 'linkedin' && value && !/^https?:\/\//i.test(value)) value = `https://${value}`
+    if (key === 'facebook' && value) value = cleanFacebook(value)
+    if (key === 'x' && value) value = cleanX(value)
+    if (key === 'website' && value) value = withScheme(value)
     out[key] = value
   }
   return out

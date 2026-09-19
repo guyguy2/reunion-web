@@ -21,6 +21,8 @@ import { getPerson, insertPerson, listPeople, parsePersonInput, serializePerson,
 import { getScene, listScenes, serializeTag } from './scenes.ts'
 import { adminRoutes } from './admin.ts'
 import { albumPhotos } from './album.ts'
+import { addTape, listTapes } from './tapes.ts'
+import { addVideo, listVideos } from './videos.ts'
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -120,6 +122,28 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
 
   app.get('/api/scenes', (c) => c.json(listScenes(db)))
 
+  // The mixtape shelf: any classmate can add a tape; organizers remove them in the admin routes.
+  app.get('/api/tapes', (c) => c.json(listTapes(db)))
+
+  app.post('/api/tapes', async (c) => {
+    try {
+      return c.json(await addTape(db, await c.req.json().catch(() => null)), 201)
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+  })
+
+  // The video library works the same way: classmates add links, organizers remove them.
+  app.get('/api/videos', (c) => c.json(listVideos(db, loadEvent().videos ?? [])))
+
+  app.post('/api/videos', async (c) => {
+    try {
+      return c.json(await addVideo(db, await c.req.json().catch(() => null)), 201)
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
+  })
+
   app.get('/api/people', (c) => {
     const view = c.get('role') === 'admin' ? 'full' : 'public'
     return c.json(listPeople(db).map((p) => serializePerson(p, view)))
@@ -201,7 +225,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir)) {
     if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
     removeUpload(config.dataDir, me.now_photo)
     updatePerson(db, me.id, {
-      nickname: null, email: null, instagram: null, linkedin: null, city: null, bio: null, quote: null,
+      nickname: null, email: null, instagram: null, linkedin: null, facebook: null, website: null, phone: null, x: null, city: null, bio: null, quote: null,
       now_photo: null, attending: null, claimed_at: null, edit_token_hash: null,
     })
     return c.json({ ok: true })

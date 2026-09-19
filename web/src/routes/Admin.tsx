@@ -145,7 +145,7 @@ export default function Admin() {
         <details>
           <summary className="cursor-pointer font-bold">ייבוא רשימה מקובץ CSV</summary>
           <div className="mt-3 space-y-2">
-            <p className="text-sm">השורה הראשונה היא כותרות. עמודות: name (חובה), former_name, nickname, email, instagram, linkedin, city.</p>
+            <p className="text-sm">השורה הראשונה היא כותרות. עמודות: name (חובה), former_name, nickname, email, instagram, linkedin, facebook, x, website, phone, city.</p>
             <textarea className="field pixel min-h-32 text-lg" dir="auto" value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={'name,former_name,city\n...'} />
             <button
               className="btn btn-sm"

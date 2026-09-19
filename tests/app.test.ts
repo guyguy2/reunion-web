@@ -6,7 +6,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from '../server/app.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
-import { insertPerson } from '../server/people.ts'
+import { insertPerson, parsePersonInput } from '../server/people.ts'
+import { addTape, parseTapeLink } from '../server/tapes.ts'
+import { addVideo, listVideos, parseVideoLink } from '../server/videos.ts'
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-test-'))
 const config: Config = {
@@ -120,6 +122,45 @@ describe('profiles', () => {
     expect(invalid.status).toBe(400)
   })
 
+  it('turns Facebook usernames and bare websites into links, and hides them when opted out', async () => {
+    const parse = (body: Record<string, string>) => parsePersonInput(body, { admin: false })
+    expect(parse({ facebook: 'jenny.carter' }).facebook).toBe('https://www.facebook.com/jenny.carter')
+    expect(parse({ facebook: 'facebook.com/jenny.carter' }).facebook).toBe('https://facebook.com/jenny.carter')
+    expect(parse({ facebook: 'https://www.facebook.com/profile.php?id=100001' }).facebook).toBe('https://www.facebook.com/profile.php?id=100001')
+    expect(parse({ website: 'tiktok.com/@jenny' }).website).toBe('https://tiktok.com/@jenny')
+    expect(parse({ website: 'javascript:alert(1)' }).website).toBe('https://javascript:alert(1)')
+
+    const id = insertPerson(db, { name: 'Link Person', facebook: 'https://www.facebook.com/lp', website: 'https://lp.dev', show_facebook: 0 })
+    const people = await (await app.request('/api/people', { headers: { Cookie: member } })).json()
+    expect(people.find((p: { id: number }) => p.id === id)).toMatchObject({ facebook: null, website: 'https://lp.dev' })
+  })
+
+  it('accepts phone numbers, rejects junk, and hides the phone when opted out', async () => {
+    const parse = (body: Record<string, string>) => parsePersonInput(body, { admin: false })
+    expect(parse({ phone: ' +972 (50) 123-4567 ' }).phone).toBe('+972 (50) 123-4567')
+    expect(parse({ phone: '' }).phone).toBeNull()
+    expect(() => parse({ phone: 'call me' })).toThrow('מספר הטלפון לא תקין')
+    expect(() => parse({ phone: '12345' })).toThrow('מספר הטלפון לא תקין')
+
+    const shown = insertPerson(db, { name: 'Phone Shown', phone: '050-1234567' })
+    const hidden = insertPerson(db, { name: 'Phone Hidden', phone: '050-7654321', show_phone: 0 })
+    const people = await (await app.request('/api/people', { headers: { Cookie: member } })).json()
+    expect(people.find((p: { id: number }) => p.id === shown).phone).toBe('050-1234567')
+    expect(people.find((p: { id: number }) => p.id === hidden).phone).toBeNull()
+  })
+
+  it('turns any X or Twitter link into a bare handle, and hides it when opted out', async () => {
+    const parse = (body: Record<string, string>) => parsePersonInput(body, { admin: false })
+    for (const input of ['@jenny_c', 'jenny_c', 'https://x.com/jenny_c', 'twitter.com/jenny_c/', 'https://mobile.twitter.com/jenny_c?lang=he']) {
+      expect(parse({ x: input }).x, input).toBe('jenny_c')
+    }
+    expect(() => parse({ x: 'not a handle' })).toThrow('שם המשתמש ב-X לא תקין')
+
+    const id = insertPerson(db, { name: 'X Hidden', x: 'hidden_one', show_x: 0 })
+    const people = await (await app.request('/api/people', { headers: { Cookie: member } })).json()
+    expect(people.find((p: { id: number }) => p.id === id).x).toBeNull()
+  })
+
   it('processes photo uploads to WebP and serves them behind the gate', async () => {
     const created = await app.request('/api/people', json('POST', { name: 'New Kid' }, { Cookie: member }))
     expect(created.status).toBe(201)
@@ -222,5 +263,140 @@ describe('admin', () => {
     await app.request(`/api/admin/people/${personId}/reset-claim`, { method: 'POST', headers: { Cookie: admin } })
     const claim = await app.request(`/api/people/${personId}/claim`, { method: 'POST', headers: { Cookie: member } })
     expect(claim.status).toBe(200)
+  })
+})
+
+describe('mixtape shelf', () => {
+  it('understands pasted YouTube, YouTube Music and Spotify links', () => {
+    const yt = (kind: string, externalId: string) => ({ provider: 'youtube', kind, externalId })
+    const sp = (kind: string, externalId: string) => ({ provider: 'spotify', kind, externalId })
+    const list = 'PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI'
+    const track = '4cOdK2wGLETKBW3PvgPWqT'
+    const cases: [string, unknown][] = [
+      ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', yt('video', 'dQw4w9WgXcQ')],
+      ['https://youtu.be/dQw4w9WgXcQ?si=abc', yt('video', 'dQw4w9WgXcQ')],
+      ['youtube.com/shorts/dQw4w9WgXcQ', yt('video', 'dQw4w9WgXcQ')],
+      ['https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=x', yt('video', 'dQw4w9WgXcQ')],
+      [`https://www.youtube.com/playlist?list=${list}`, yt('playlist', list)],
+      [`https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=${list}&index=3`, yt('playlist', list)],
+      ['https://music.youtube.com/playlist?list=OLAK5uy_kS3FYJm0Ov6ePMCGXCTS4BqXd1nHm8H6Y', yt('playlist', 'OLAK5uy_kS3FYJm0Ov6ePMCGXCTS4BqXd1nHm8H6Y')],
+      ['https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=RDAMVMdQw4w9WgXcQ', yt('video', 'dQw4w9WgXcQ')],
+      [` ${list} `, yt('playlist', list)],
+      [`https://open.spotify.com/track/${track}?si=123`, sp('track', track)],
+      [`https://open.spotify.com/intl-he/album/${track}`, sp('album', track)],
+      [`https://open.spotify.com/playlist/${track}`, sp('playlist', track)],
+      [`spotify:artist:${track}`, sp('artist', track)],
+      ['https://www.youtube.com/@RickAstleyYT', null],
+      ['https://example.com/watch?v=dQw4w9WgXcQ', null],
+      [`https://open.spotify.com/user/${track}`, null],
+      ['hello there friends', null],
+      ['', null],
+    ]
+    for (const [input, expected] of cases) expect(parseTapeLink(input), input).toEqual(expected)
+  })
+
+  it('names a tape from YouTube or Spotify when the classmate leaves the name blank', async () => {
+    const tape = await addTape(db, { url: 'https://youtu.be/aaaaaaaaaaa' }, async () => 'Looked-up title')
+    expect(tape.title).toBe('Looked-up title')
+    const unnamed = await addTape(db, { url: 'https://youtu.be/bbbbbbbbbbb' }, async () => null)
+    expect(unnamed.title).toBe('קלטת בלי שם')
+  })
+
+  it('lets any classmate add a tape, rejects bad or duplicate links, and only organizers remove tapes', async () => {
+    expect((await app.request('/api/tapes')).status).toBe(401)
+    const body = { url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', title: 'Class of 96', addedBy: 'Jenny' }
+    const added = await app.request('/api/tapes', json('POST', body, { Cookie: member }))
+    expect(added.status).toBe(201)
+    const tape = await added.json()
+    expect(tape).toMatchObject({ provider: 'spotify', kind: 'playlist', externalId: '37i9dQZF1DXcBWIGoYBM5M', title: 'Class of 96', addedBy: 'Jenny' })
+
+    const again = await app.request('/api/tapes', json('POST', body, { Cookie: member }))
+    expect(again.status).toBe(400)
+    const bad = await app.request('/api/tapes', json('POST', { url: 'https://example.com/song', title: 'x' }, { Cookie: member }))
+    expect(bad.status).toBe(400)
+    const short = await app.request('/api/tapes', json('POST', { url: 'https://spotify.link/abc', title: 'x' }, { Cookie: member }))
+    expect((await short.json()).error).toContain('open.spotify.com')
+
+    const shelf = await (await app.request('/api/tapes', { headers: { Cookie: member } })).json()
+    expect(shelf.map((t: { id: number }) => t.id)).toContain(tape.id)
+
+    expect((await app.request(`/api/admin/tapes/${tape.id}`, { method: 'DELETE', headers: { Cookie: member } })).status).toBe(403)
+    expect((await app.request(`/api/admin/tapes/${tape.id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(200)
+    expect((await app.request(`/api/admin/tapes/${tape.id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(404)
+  })
+})
+
+describe('video library', () => {
+  it('understands pasted YouTube, Instagram, Facebook and X video links', () => {
+    const v = (provider: string, externalId: string) => ({ provider, externalId })
+    const cases: [string, unknown][] = [
+      ['https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI', v('youtube', 'dQw4w9WgXcQ')],
+      ['https://youtu.be/dQw4w9WgXcQ?si=abc', v('youtube', 'dQw4w9WgXcQ')],
+      ['youtube.com/shorts/dQw4w9WgXcQ', v('youtube', 'dQw4w9WgXcQ')],
+      ['https://www.instagram.com/p/C1a2B3c4D5e/?igsh=xyz', v('instagram', 'C1a2B3c4D5e')],
+      ['https://www.instagram.com/reel/C1a2B3c4D5e/', v('instagram', 'C1a2B3c4D5e')],
+      ['instagram.com/reels/C1a2B3c4D5e', v('instagram', 'C1a2B3c4D5e')],
+      ['https://www.instagram.com/jenny.c/p/C1a2B3c4D5e/', v('instagram', 'C1a2B3c4D5e')],
+      ['https://www.facebook.com/watch/?v=1234567890123', v('facebook', '1234567890123')],
+      ['https://m.facebook.com/watch?v=1234567890123&ref=sharing', v('facebook', '1234567890123')],
+      ['https://www.facebook.com/SomePage/videos/1234567890123/', v('facebook', '1234567890123')],
+      ['https://www.facebook.com/SomePage/videos/graduation-night/1234567890123/', v('facebook', '1234567890123')],
+      ['https://www.facebook.com/reel/1234567890123', v('facebook', '1234567890123')],
+      ['https://x.com/someone/status/1790000000000000000', v('x', '1790000000000000000')],
+      ['https://twitter.com/someone/status/1790000000000000000/video/1', v('x', '1790000000000000000')],
+      ['mobile.twitter.com/i/status/1790000000000000000?s=20', v('x', '1790000000000000000')],
+      ['https://www.youtube.com/@RickAstleyYT', null],
+      ['https://www.instagram.com/jenny.c/', null],
+      ['https://www.facebook.com/jenny.carter', null],
+      ['https://x.com/someone', null],
+      ['https://example.com/watch?v=dQw4w9WgXcQ', null],
+      ['hello there friends', null],
+      ['', null],
+    ]
+    for (const [input, expected] of cases) expect(parseVideoLink(input), input).toEqual(expected)
+  })
+
+  it('names a video from the lookup, or by where it came from when there is no title', async () => {
+    const named = await addVideo(db, { url: 'https://youtu.be/ccccccccccc' }, async () => 'Graduation night')
+    expect(named.title).toBe('Graduation night')
+    const insta = await addVideo(db, { url: 'https://www.instagram.com/reel/Cabcdefghij/' }, async () => null)
+    expect(insta).toMatchObject({ title: 'סרטון מאינסטגרם', url: 'https://www.instagram.com/p/Cabcdefghij/' })
+  })
+
+  it("lists the organizers' videos first, and skips ones it cannot play", () => {
+    const featured = [
+      { title: 'Opening', url: 'https://youtu.be/ddddddddddd', note: 'From the organizers' },
+      { title: 'Broken', url: 'https://example.com/video' },
+      { title: 'Speech', url: 'https://x.com/a/status/1790000000000000001' },
+    ]
+    const list = listVideos(db, featured)
+    expect(list.slice(0, 2)).toMatchObject([
+      { id: 0, provider: 'youtube', externalId: 'ddddddddddd', title: 'Opening', note: 'From the organizers' },
+      { id: -1, provider: 'x', externalId: '1790000000000000001', title: 'Speech' },
+    ])
+    expect(list.slice(2).every((v) => v.id > 0)).toBe(true)
+  })
+
+  it('lets any classmate add a video, rejects bad or duplicate links, and only organizers remove videos', async () => {
+    expect((await app.request('/api/videos')).status).toBe(401)
+    const body = { url: 'https://www.facebook.com/SomePage/videos/9876543210123/', title: 'Prom 96', note: 'Tape from my dad', addedBy: 'Jenny' }
+    const added = await app.request('/api/videos', json('POST', body, { Cookie: member }))
+    expect(added.status).toBe(201)
+    const video = await added.json()
+    expect(video).toMatchObject({ provider: 'facebook', externalId: '9876543210123', title: 'Prom 96', note: 'Tape from my dad', addedBy: 'Jenny' })
+    expect(video.url).toBe('https://www.facebook.com/watch/?v=9876543210123')
+
+    expect((await app.request('/api/videos', json('POST', body, { Cookie: member }))).status).toBe(400)
+    const bad = await app.request('/api/videos', json('POST', { url: 'https://example.com/clip' }, { Cookie: member }))
+    expect(bad.status).toBe(400)
+    const share = await app.request('/api/videos', json('POST', { url: 'https://www.facebook.com/share/v/1AbCdEf/' }, { Cookie: member }))
+    expect((await share.json()).error).toContain('הכתובת המלאה')
+
+    const list = await (await app.request('/api/videos', { headers: { Cookie: member } })).json()
+    expect(list.map((v: { id: number }) => v.id)).toContain(video.id)
+
+    expect((await app.request(`/api/admin/videos/${video.id}`, { method: 'DELETE', headers: { Cookie: member } })).status).toBe(403)
+    expect((await app.request(`/api/admin/videos/${video.id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(200)
+    expect((await app.request(`/api/admin/videos/${video.id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(404)
   })
 })

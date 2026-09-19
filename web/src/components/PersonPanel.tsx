@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import 'img-comparison-slider'
 import { api, faceUrl, matchesPerson, type Person, type Scene, type Tag } from '../api.ts'
 import { useStore } from '../store.tsx'
+import ContactLinks from './ContactLinks.tsx'
 
 const ATTENDING = {
   yes: { text: 'אהיה שם!', className: 'bg-teal text-white' },
@@ -96,25 +97,7 @@ export function PersonPanel({ person, onClose, onJump }: { person: Person; onClo
         </p>
       )}
 
-      {(person.email || person.instagram || person.linkedin) && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {person.email && (
-            <a className="btn btn-plain btn-sm" href={`mailto:${person.email}`}>
-              אימייל
-            </a>
-          )}
-          {person.instagram && (
-            <a className="btn btn-pink btn-sm" href={`https://instagram.com/${person.instagram}`} target="_blank" rel="noreferrer">
-              @{person.instagram}
-            </a>
-          )}
-          {person.linkedin && (
-            <a className="btn btn-teal btn-sm" href={person.linkedin} target="_blank" rel="noreferrer">
-              LinkedIn
-            </a>
-          )}
-        </div>
-      )}
+      <ContactLinks person={person} />
 
       {thenSrc && person.nowPhoto && (
         <div className="mt-5">

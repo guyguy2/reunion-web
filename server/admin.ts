@@ -70,7 +70,7 @@ export function adminRoutes(config: Config, db: Db) {
     return c.json(serializePerson(getPerson(db, person.id)!, 'full'))
   })
 
-  // CSV columns: name (required), former_name, nickname, email, instagram, linkedin, city
+  // CSV columns: name (required), former_name, nickname, email, instagram, linkedin, facebook, x, website, phone, city
   admin.post('/import-csv', async (c) => {
     const rows = parseCsv(await c.req.text())
     let added = 0
@@ -171,6 +171,18 @@ export function adminRoutes(config: Config, db: Db) {
   admin.post('/rebuild-wall', async (c) => {
     await rebuildWall(db, config.dataDir)
     return c.json(listScenes(db))
+  })
+
+  // ---- Mixtape shelf ----
+  admin.delete('/tapes/:id', (c) => {
+    const result = db.prepare('DELETE FROM tapes WHERE id = ?').run(Number(c.req.param('id')))
+    return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
+  })
+
+  // ---- Video library ----
+  admin.delete('/videos/:id', (c) => {
+    const result = db.prepare('DELETE FROM videos WHERE id = ?').run(Number(c.req.param('id')))
+    return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
   })
 
   // ---- Demo data: only into an empty site ----
