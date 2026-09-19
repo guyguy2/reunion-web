@@ -23,8 +23,11 @@ export default function Gate({ onEnter }: { onEnter: (role: Role) => void }) {
   }
 
   return (
-    <div className="relative flex min-h-full items-center justify-center overflow-hidden p-4">
-      <img src="/hadassim-postcard.webp" alt="" className="absolute inset-0 h-full w-full object-cover" />
+    <div className="relative flex min-h-full items-end justify-center overflow-hidden bg-ink p-4 pb-8 sm:items-center sm:pb-4">
+      {/* The whole postcard, uncropped. A blurred copy fills whatever space is left around it.
+          On phones it sits at the top, above the login window. */}
+      <img src="/hadassim-postcard.webp" alt="" className="absolute inset-0 h-full w-full scale-125 object-cover blur-2xl" />
+      <img src="/hadassim-postcard.webp" alt="" className="absolute inset-0 h-full w-full object-contain object-top sm:object-center" />
       <div className="relative flex w-full max-w-md flex-col items-center gap-5">
         <h1 className="font-display -rotate-2 border-[3px] border-ink bg-sun px-4 py-1 text-3xl whitespace-nowrap shadow-chunk-lg sm:text-4xl">
           פגישת מחזור <span className="text-pink">2026</span>
