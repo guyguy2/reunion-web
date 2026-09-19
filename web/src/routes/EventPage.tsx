@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store.tsx'
+import { RsvpChoice } from '../components/Rsvp.tsx'
 
 function Countdown({ date }: { date: string }) {
   const [now, setNow] = useState(Date.now())
@@ -46,6 +47,8 @@ export default function EventPage() {
         </p>
         <Countdown date={event.date} />
       </header>
+
+      <RsvpChoice />
 
       <div className="grid gap-6 sm:grid-cols-2">
         <section className="chunk p-5">

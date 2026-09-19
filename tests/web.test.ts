@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { Person, Scene, Tape } from '../web/src/api.ts'
 import ContactLinks from '../web/src/components/ContactLinks.tsx'
+import { daysLeft, rsvpShortcut } from '../web/src/components/Rsvp.tsx'
 import { NoteCard } from '../web/src/components/Notes.tsx'
 import { buildShelf, canSkip, nextTape, pickTape, spotifyUri, tapeFinished } from '../web/src/tapes.ts'
 import { embedUrl, isTallEmbed, thumbnailUrl } from '../web/src/videos.ts'
@@ -140,5 +141,27 @@ describe('video library', () => {
     expect(thumbnailUrl({ provider: 'youtube', externalId: 'dQw4w9WgXcQ' })).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg')
     expect(thumbnailUrl({ provider: 'instagram', externalId: 'C1a2B3c4D5e' })).toBeNull()
     expect([isTallEmbed('instagram'), isTallEmbed('x'), isTallEmbed('youtube'), isTallEmbed('facebook')]).toEqual([true, true, false, false])
+  })
+})
+
+describe('RSVP shortcut', () => {
+  const party = '2026-12-17T18:00:00'
+  const now = new Date('2026-09-19T12:00:00').getTime()
+
+  it('asks for an RSVP, with the date, until you answer yes or no', () => {
+    expect(rsvpShortcut(null, party, now)).toEqual({ kind: 'ask', date: '17.12' })
+    expect(rsvpShortcut('maybe', party, now)).toEqual({ kind: 'ask', date: '17.12' })
+    expect(rsvpShortcut(undefined, 'soon', now)).toEqual({ kind: 'ask', date: null })
+  })
+
+  it('counts down once you have answered, and just names the event after it starts', () => {
+    expect(rsvpShortcut('yes', party, now)).toEqual({ kind: 'going', days: 89 })
+    expect(rsvpShortcut('no', party, now)).toEqual({ kind: 'answered', days: 89 })
+    expect(rsvpShortcut('yes', 'soon', now)).toEqual({ kind: 'going', days: null })
+    expect(rsvpShortcut(null, party, new Date('2026-12-17T18:00:00').getTime())).toEqual({ kind: 'over' })
+  })
+
+  it('says today and tomorrow in words', () => {
+    expect([daysLeft(89), daysLeft(1), daysLeft(0), daysLeft(null)]).toEqual(['עוד 89 ימים', 'מחר!', 'היום!', 'האירוע'])
   })
 })
