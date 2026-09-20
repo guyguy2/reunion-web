@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { EventInfo } from '../api.ts'
+import { api, type Credit } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { RsvpChoice } from '../components/Rsvp.tsx'
 
@@ -31,34 +31,100 @@ function Countdown({ date }: { date: string }) {
   )
 }
 
-/** Thanks to whoever helped build the site. Renders nothing when nobody is credited. */
-export function Credits({ credits }: { credits: EventInfo['credits'] }) {
-  if (!credits?.length) return null
+/**
+ * Thanks to whoever helped build the site. Hidden from everyone else when the list is empty,
+ * but always shown to the organizers, who edit it here rather than in the event details.
+ */
+export function Credits({ credits, isAdmin }: { credits: Credit[] | undefined; isAdmin: boolean }) {
+  const [list, setList] = useState<Credit[]>(credits ?? [])
+  const [draft, setDraft] = useState<Credit[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save(rows: Credit[]) {
+    setBusy(true)
+    setError(null)
+    try {
+      const saved = await api<{ credits: Credit[] }>('/api/admin/credits', { method: 'PUT', json: { credits: rows } })
+      setList(saved.credits)
+      setDraft(null)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!isAdmin && !list.length) return null
+
+  const edit = (i: number, field: keyof Credit, value: string) => setDraft((rows) => (rows ?? []).map((row, j) => (j === i ? { ...row, [field]: value } : row)))
+
   return (
     <section className="chunk bg-sun p-5">
-      <h2 className="mb-1 font-display text-2xl">תודה ענקית</h2>
-      <p className="text-sm">האתר הזה נבנה בהתנדבות. תודה לכל מי שנבר בקלסרים, סרק תמונות ורדף אחרי אנשים בוואטסאפ.</p>
-      <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-        {credits.map((person, i) => (
-          <li key={i} className="rounded-lg border-[3px] border-ink bg-white p-2">
-            <p className="font-bold" dir="auto">
-              {person.name}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-2xl">תודה ענקית</h2>
+        {isAdmin && !draft && (
+          <button className="btn btn-plain btn-sm" onClick={() => setDraft(list.length ? list : [{ name: '' }])}>
+            עריכה
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-sm">האתר הזה נבנה בהתנדבות. תודה לכל מי שנבר בקלסרים, סרק תמונות ורדף אחרי אנשים בוואטסאפ.</p>
+
+      {draft ? (
+        <div className="mt-4 space-y-2">
+          {draft.map((person, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2">
+              <input className="field flex-1" dir="auto" maxLength={60} value={person.name} onChange={(e) => edit(i, 'name', e.target.value)} placeholder="שם" aria-label="שם" />
+              <input className="field flex-1" dir="auto" maxLength={120} value={person.note ?? ''} onChange={(e) => edit(i, 'note', e.target.value)} placeholder="מה הוא עשה (לא חובה)" aria-label="מה הוא עשה" />
+              <button className="btn btn-plain btn-sm" onClick={() => setDraft(draft.filter((_, j) => j !== i))} aria-label={`הסרת ${person.name || 'שורה'}`}>
+                הסרה
+              </button>
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button className="btn btn-plain btn-sm" onClick={() => setDraft([...draft, { name: '' }])}>
+              הוספת שורה
+            </button>
+            <button className="btn btn-sm" disabled={busy} onClick={() => save(draft.filter((row) => row.name.trim()))}>
+              {busy ? 'שומרים...' : 'שמירה'}
+            </button>
+            <button className="btn btn-plain btn-sm" disabled={busy} onClick={() => (setDraft(null), setError(null))}>
+              ביטול
+            </button>
+          </div>
+          {error && (
+            <p role="status" className="rounded-lg border-[3px] border-ink bg-pink p-2 text-sm font-bold text-white">
+              {error}
             </p>
-            {person.note && (
-              <p className="text-sm" dir="auto">
-                {person.note}
+          )}
+        </div>
+      ) : list.length ? (
+        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+          {list.map((person, i) => (
+            <li key={i} className="rounded-lg border-[3px] border-ink bg-white p-2">
+              <p className="font-bold" dir="auto">
+                {person.name}
               </p>
-            )}
-          </li>
-        ))}
-      </ul>
+              {person.note && (
+                <p className="text-sm" dir="auto">
+                  {person.note}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-4 text-sm font-bold">עוד לא הודינו לאף אחד. לחצו על "עריכה" כדי להוסיף שמות.</p>
+      )}
+
       <p className="mt-4 text-sm">שכחנו מישהו? משהו לא עובד? כפתור "משוב" למעלה מגיע ישר אלינו.</p>
     </section>
   )
 }
 
 export default function EventPage() {
-  const { event, people } = useStore()
+  const { event, people, role } = useStore()
   if (!event) return null
   const date = new Date(event.date)
   const coming = people.filter((p) => p.attending === 'yes').length
@@ -127,7 +193,7 @@ export default function EventPage() {
         </section>
       )}
 
-      <Credits credits={event.credits} />
+      <Credits credits={event.credits} isAdmin={role === 'admin'} />
 
       <footer className="flex items-center justify-center gap-3 pb-6 text-sm">
         <span>מספר המבקרים עד כה:</span>

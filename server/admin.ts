@@ -5,6 +5,7 @@ import { requireAdmin, type AppEnv } from './auth.ts'
 import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, readImageField } from './images.ts'
 import { addPhoto, deletePhoto, deletePhotos, getPerson, insertPerson, parseCsv, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { addGroupScene, deleteScene, getScene, insertTag, listScenes, rebuildWall, serializeTag } from './scenes.ts'
+import { saveCredits } from './credits.ts'
 import { loadDemoData } from './demo.ts'
 import { listFeedback } from './feedback.ts'
 import { exportRoster, importRoster, markPersonStaff, mergePeople, parseRoster } from './roster.ts'
@@ -296,6 +297,15 @@ export function adminRoutes(config: Config, db: Db) {
       scenes: db.prepare('SELECT * FROM scenes ORDER BY id').all(),
       tags: db.prepare('SELECT * FROM tags ORDER BY id').all(),
     })
+  })
+
+  // ---- Credits: the thank-you list on the event page, edited in place by the organizers ----
+  admin.put('/credits', async (c) => {
+    try {
+      return c.json({ credits: saveCredits(db, await c.req.json().catch(() => null)) })
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400)
+    }
   })
 
   // ---- Roster: the names, classes and genders on the class photos, to carry between copies of the site ----

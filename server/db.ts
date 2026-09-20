@@ -337,6 +337,16 @@ export function bumpCounter(db: Db, key: string): number {
   return getCounter(db, key)
 }
 
+/** Free-form settings, for the bits of the site the organizers edit from the site itself. */
+export function getMeta(db: Db, key: string): string | null {
+  const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined
+  return row ? row.value : null
+}
+
+export function setMeta(db: Db, key: string, value: string) {
+  db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value)
+}
+
 export function getCounter(db: Db, key: string): number {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined
   return row ? Number(row.value) : 0
