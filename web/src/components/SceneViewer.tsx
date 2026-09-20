@@ -128,9 +128,6 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
     <div className="absolute inset-0 bg-ink">
       {/* The viewer positions things by left/top, so it stays LTR inside the RTL page. */}
       <div ref={host} dir="ltr" className="absolute inset-0" />
-      <div className="pixel pointer-events-none absolute end-3 top-3 flex items-center gap-2 text-xl text-white drop-shadow">
-        <span className="rec-dot inline-block h-3 w-3 rounded-full bg-red-500" /> REC
-      </div>
       <div className="absolute end-3 bottom-20 flex flex-col gap-2 sm:bottom-4">
         <button className="btn btn-plain pixel h-11 w-11 p-0 text-2xl" onClick={() => zoom(1.6)} aria-label="הגדלה">
           +
