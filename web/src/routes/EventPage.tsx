@@ -31,6 +31,17 @@ function Countdown({ date }: { date: string }) {
   )
 }
 
+/** The Claude mark, drawn inline so it needs no asset and takes the size of the text beside it. */
+function ClaudeMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="inline-block size-4 align-[-0.2em]" aria-hidden="true">
+      {Array.from({ length: 12 }, (_, i) => (
+        <rect key={i} x="11.35" y="1.8" width="1.3" height="8.4" rx="0.65" fill="#d97757" transform={`rotate(${i * 30} 12 12)`} />
+      ))}
+    </svg>
+  )
+}
+
 /**
  * Thanks to whoever helped build the site. Hidden from everyone else when the list is empty,
  * but always shown to the organizers, who edit it here rather than in the event details.
@@ -59,6 +70,14 @@ export function Credits({ credits, isAdmin }: { credits: Credit[] | undefined; i
 
   const edit = (i: number, field: keyof Credit, value: string) => setDraft((rows) => (rows ?? []).map((row, j) => (j === i ? { ...row, [field]: value } : row)))
 
+  /** Swaps a row with its neighbour, so the list can be put in whatever order the organizers want. */
+  const move = (i: number, by: -1 | 1) =>
+    setDraft((rows) => {
+      const next = [...(rows ?? [])]
+      ;[next[i], next[i + by]] = [next[i + by], next[i]]
+      return next
+    })
+
   return (
     <section className="chunk bg-sun p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -69,7 +88,12 @@ export function Credits({ credits, isAdmin }: { credits: Credit[] | undefined; i
           </button>
         )}
       </div>
-      <p className="mt-1 text-sm">האתר הזה נבנה בהתנדבות. תודה לכל מי שנבר בקלסרים, סרק תמונות ורדף אחרי אנשים בוואטסאפ.</p>
+      <p className="mt-1 text-sm">
+        תודה לכל מי שנבר בקלסרים, סרק תמונות ורדף אחרי אנשים בוואטסאפ. האתר הזה נבנה בהתנדבות ובאהבה <span aria-label="באהבה">❤️</span>, בעזרת{' '}
+        <a className="font-bold underline decoration-2 underline-offset-2" href="https://claude.com/claude-code" target="_blank" rel="noreferrer">
+          <ClaudeMark /> Claude Code
+        </a>
+      </p>
 
       {draft ? (
         <div className="mt-4 space-y-2">
@@ -77,6 +101,12 @@ export function Credits({ credits, isAdmin }: { credits: Credit[] | undefined; i
             <div key={i} className="flex flex-wrap items-center gap-2">
               <input className="field flex-1" dir="auto" maxLength={60} value={person.name} onChange={(e) => edit(i, 'name', e.target.value)} placeholder="שם" aria-label="שם" />
               <input className="field flex-1" dir="auto" maxLength={120} value={person.note ?? ''} onChange={(e) => edit(i, 'note', e.target.value)} placeholder="מה הוא עשה (לא חובה)" aria-label="מה הוא עשה" />
+              <button className="btn btn-plain btn-sm pixel" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`העלאת ${person.name || 'שורה'} למעלה`}>
+                ↑
+              </button>
+              <button className="btn btn-plain btn-sm pixel" disabled={i === draft.length - 1} onClick={() => move(i, 1)} aria-label={`הורדת ${person.name || 'שורה'} למטה`}>
+                ↓
+              </button>
               <button className="btn btn-plain btn-sm" onClick={() => setDraft(draft.filter((_, j) => j !== i))} aria-label={`הסרת ${person.name || 'שורה'}`}>
                 הסרה
               </button>
