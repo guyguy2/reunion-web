@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from '../server/app.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
-import { insertPerson, parsePersonInput } from '../server/people.ts'
+import { MAX_PHOTOS_PER_KIND, insertPerson, parsePersonInput } from '../server/people.ts'
 import { addTape, parseTapeLink } from '../server/tapes.ts'
 import { addVideo, listVideos, parseVideoLink } from '../server/videos.ts'
 import { addFeedback, resendSender, type SendEmail } from '../server/feedback.ts'
@@ -196,6 +196,55 @@ describe('profiles', () => {
     const removed = await app.request('/api/me', { method: 'DELETE', headers: { Cookie: member, 'x-edit-token': token } })
     expect(removed.status).toBe(200)
     expect((await app.request(nowPhoto, { headers: { Cookie: member } })).status).toBe(404)
+  })
+
+  it('keeps up to three photos of each kind, and makes the next one primary when the first goes', async () => {
+    const created = await app.request('/api/people', json('POST', { name: 'Shutterbug' }, { Cookie: member }))
+    const { token } = await created.json()
+    const headers = { Cookie: member, 'x-edit-token': token }
+    const add = async (kind: 'then' | 'now') => app.request(`/api/me/photo/${kind}`, { method: 'POST', headers, body: await pngUpload('photo') })
+
+    let person
+    for (let i = 0; i < MAX_PHOTOS_PER_KIND; i++) {
+      const res = await add('now')
+      expect(res.status).toBe(200)
+      person = await res.json()
+    }
+    expect(person.nowPhotos).toHaveLength(MAX_PHOTOS_PER_KIND)
+    // The first upload stays the primary, the one the wall and the tiles use.
+    expect(person.nowPhoto).toBe(person.nowPhotos[0].url)
+
+    const tooMany = await add('now')
+    expect(tooMany.status).toBe(400)
+    expect((await tooMany.json()).error).toContain(String(MAX_PHOTOS_PER_KIND))
+
+    // "Then" photos are counted separately, so six in total.
+    const then = await add('then')
+    expect(then.status).toBe(200)
+    expect((await then.json()).thenPhotos).toHaveLength(1)
+
+    const [first, second] = person.nowPhotos
+    const dropped = await app.request(`/api/me/photo/${first.id}`, { method: 'DELETE', headers })
+    expect(dropped.status).toBe(200)
+    const after = await dropped.json()
+    expect(after.nowPhotos).toHaveLength(MAX_PHOTOS_PER_KIND - 1)
+    expect(after.nowPhoto).toBe(second.url)
+    expect((await app.request(first.url, { headers: { Cookie: member } })).status).toBe(404)
+  })
+
+  it('will not let one owner delete a photo that belongs to someone else', async () => {
+    const mine = await (await app.request('/api/people', json('POST', { name: 'Photo Owner' }, { Cookie: member }))).json()
+    const theirs = await (await app.request('/api/people', json('POST', { name: 'Someone Else' }, { Cookie: member }))).json()
+    const uploaded = await app.request('/api/me/photo/now', {
+      method: 'POST',
+      headers: { Cookie: member, 'x-edit-token': theirs.token },
+      body: await pngUpload('photo'),
+    })
+    const [photo] = (await uploaded.json()).nowPhotos
+
+    const attempt = await app.request(`/api/me/photo/${photo.id}`, { method: 'DELETE', headers: { Cookie: member, 'x-edit-token': mine.token } })
+    expect(attempt.status).toBe(404)
+    expect((await app.request(photo.url, { headers: { Cookie: member } })).status).toBe(200)
   })
 })
 

@@ -34,6 +34,17 @@ export interface PersonRow {
   claimed_at: string | null
   edit_token_hash: string | null
   pin_hash: string | null
+  /** Attached by getPerson/listPeople, not a column. Oldest first; the first of each kind is the primary. */
+  photos?: PersonPhotoRow[]
+}
+
+export type PhotoKind = 'then' | 'now'
+
+export interface PersonPhotoRow {
+  id: number
+  person_id: number
+  kind: PhotoKind
+  path: string
 }
 
 export interface SceneRow {
@@ -280,6 +291,18 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (quote_id, reactor)
   );
+  `,
+  `
+  CREATE TABLE person_photos (
+    id INTEGER PRIMARY KEY,
+    person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('then', 'now')),
+    path TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX person_photos_person ON person_photos(person_id);
+  INSERT INTO person_photos (person_id, kind, path) SELECT id, 'then', then_photo FROM people WHERE then_photo IS NOT NULL;
+  INSERT INTO person_photos (person_id, kind, path) SELECT id, 'now', now_photo FROM people WHERE now_photo IS NOT NULL;
   `,
 ]
 

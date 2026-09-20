@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import type { Config } from './config.ts'
 import { getCounter, type Db, type TagRow } from './db.ts'
 import { requireAdmin, type AppEnv } from './auth.ts'
-import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, readImageField, removeUpload, saveUpload } from './images.ts'
-import { getPerson, insertPerson, parseCsv, parsePersonInput, serializePerson, updatePerson } from './people.ts'
+import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, readImageField } from './images.ts'
+import { addPhoto, deletePhoto, deletePhotos, getPerson, insertPerson, parseCsv, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { addGroupScene, deleteScene, getScene, insertTag, listScenes, rebuildWall, serializeTag } from './scenes.ts'
 import { loadDemoData } from './demo.ts'
 import { listFeedback } from './feedback.ts'
@@ -44,8 +44,7 @@ export function adminRoutes(config: Config, db: Db) {
   admin.delete('/people/:id', (c) => {
     const person = getPerson(db, Number(c.req.param('id')))
     if (!person) return c.json({ error: 'Not found' }, 404)
-    removeUpload(config.dataDir, person.then_photo)
-    removeUpload(config.dataDir, person.now_photo)
+    deletePhotos(db, config.dataDir, person.id)
     db.prepare('DELETE FROM people WHERE id = ?').run(person.id)
     return c.json({ ok: true })
   })
@@ -90,15 +89,18 @@ export function adminRoutes(config: Config, db: Db) {
     const kind = c.req.param('kind')
     if (!person) return c.json({ error: 'Not found' }, 404)
     if (kind !== 'then' && kind !== 'now') return c.json({ error: 'Unknown photo kind' }, 400)
-    let rel: string
     try {
-      rel = await saveUpload(config.dataDir, await readImageField(c, 'photo', MAX_UPLOAD_BYTES))
+      await addPhoto(db, config.dataDir, person.id, kind, await readImageField(c, 'photo', MAX_UPLOAD_BYTES))
     } catch (err) {
       return c.json({ error: (err as Error).message || 'לא הצלחנו לקרוא את התמונה' }, 400)
     }
-    const column = kind === 'then' ? 'then_photo' : 'now_photo'
-    removeUpload(config.dataDir, person[column])
-    updatePerson(db, person.id, { [column]: rel })
+    return c.json(serializePerson(getPerson(db, person.id)!, 'full'))
+  })
+
+  admin.delete('/people/:id/photo/:photoId', (c) => {
+    const person = getPerson(db, Number(c.req.param('id')))
+    if (!person) return c.json({ error: 'Not found' }, 404)
+    if (!deletePhoto(db, config.dataDir, person.id, Number(c.req.param('photoId')))) return c.json({ error: 'Not found' }, 404)
     return c.json(serializePerson(getPerson(db, person.id)!, 'full'))
   })
 
