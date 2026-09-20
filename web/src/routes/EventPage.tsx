@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { EventInfo } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { RsvpChoice } from '../components/Rsvp.tsx'
 
@@ -27,6 +28,32 @@ function Countdown({ date }: { date: string }) {
         </div>
       ))}
     </div>
+  )
+}
+
+/** Thanks to whoever helped build the site. Renders nothing when nobody is credited. */
+export function Credits({ credits }: { credits: EventInfo['credits'] }) {
+  if (!credits?.length) return null
+  return (
+    <section className="chunk bg-sun p-5">
+      <h2 className="mb-1 font-display text-2xl">תודה ענקית</h2>
+      <p className="text-sm">האתר הזה נבנה בהתנדבות. תודה לכל מי שנבר בקלסרים, סרק תמונות ורדף אחרי אנשים בוואטסאפ.</p>
+      <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+        {credits.map((person, i) => (
+          <li key={i} className="rounded-lg border-[3px] border-ink bg-white p-2">
+            <p className="font-bold" dir="auto">
+              {person.name}
+            </p>
+            {person.note && (
+              <p className="text-sm" dir="auto">
+                {person.note}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-4 text-sm">שכחנו מישהו? משהו לא עובד? כפתור "משוב" למעלה מגיע ישר אלינו.</p>
+    </section>
   )
 }
 
@@ -99,6 +126,8 @@ export default function EventPage() {
           </div>
         </section>
       )}
+
+      <Credits credits={event.credits} />
 
       <footer className="flex items-center justify-center gap-3 pb-6 text-sm">
         <span>מספר המבקרים עד כה:</span>

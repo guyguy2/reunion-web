@@ -147,6 +147,8 @@ export interface EventInfo {
   music: { youtubePlaylistId: string; mixtapeTitle: string }
   memories: { albumTitle: string; blurb: string; albumUrl: string }
   videos: { title: string; url: string; note?: string }[]
+  /** Whoever helped build the site or fill it with material. Absent when nobody is credited. */
+  credits?: { name: string; note?: string }[]
   visits: number
 }
 

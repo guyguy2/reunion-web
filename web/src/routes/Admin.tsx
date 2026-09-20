@@ -327,6 +327,20 @@ export default function Admin() {
             <summary className="cursor-pointer font-bold">ייבוא רשימה מקובץ CSV</summary>
             <div className="mt-3 space-y-2">
               <p className="text-sm">השורה הראשונה היא כותרות. עמודות: name (חובה), former_name, nickname, email, instagram, linkedin, facebook, x, website, phone, city.</p>
+              {/* The file only fills the box below, so the list can be checked and fixed before it is imported. */}
+              <label className="btn btn-plain btn-sm">
+                בחירת קובץ CSV
+                <input
+                  type="file"
+                  accept=".csv,text/csv,text/plain"
+                  className="sr-only"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (file) setCsv(await file.text())
+                  }}
+                />
+              </label>
               <textarea className="field pixel min-h-32 text-lg" dir="auto" value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={'name,former_name,city\n...'} />
               <button
                 className="btn btn-sm"
