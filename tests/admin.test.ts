@@ -144,3 +144,33 @@ describe('renaming a person', () => {
     expect((await rename(admin, 999999, 'Nobody')).status).toBe(404)
   })
 })
+
+describe('credits', () => {
+  const put = (cookie: string, body: unknown) =>
+    app.request('/api/admin/credits', { method: 'PUT', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+
+  const credits = async (cookie: string) => ((await (await app.request('/api/event', { headers: { Cookie: cookie } })).json()) as { credits: unknown }).credits
+
+  it('saves the list and serves it with the event details', async () => {
+    expect(await credits(member)).toEqual([])
+    const res = await put(admin, { credits: [{ name: 'דנה', note: 'סרקה את ספר המחזור' }, { name: 'יוסי', note: '' }] })
+    expect(res.status).toBe(200)
+    expect(await credits(member)).toEqual([{ name: 'דנה', note: 'סרקה את ספר המחזור' }, { name: 'יוסי' }])
+  })
+
+  it('replaces the whole list, so removing someone sticks', async () => {
+    await put(admin, { credits: [{ name: 'רק אני' }] })
+    expect(await credits(member)).toEqual([{ name: 'רק אני' }])
+  })
+
+  it('refuses a nameless row and anything too long', async () => {
+    expect((await put(admin, { credits: [{ name: '  ' }] })).status).toBe(400)
+    expect((await put(admin, { credits: [{ name: 'x'.repeat(61) }] })).status).toBe(400)
+    expect((await put(admin, { credits: 'nope' })).status).toBe(400)
+    expect(await credits(member)).toEqual([{ name: 'רק אני' }])
+  })
+
+  it('is closed to members', async () => {
+    expect((await put(member, { credits: [] })).status).toBe(403)
+  })
+})

@@ -253,7 +253,7 @@ describe('RSVP shortcut', () => {
 })
 
 describe('credits', () => {
-  const render = (credits: { name: string; note?: string }[] | undefined) => renderToStaticMarkup(createElement(Credits, { credits }))
+  const render = (credits: { name: string; note?: string }[] | undefined, isAdmin = false) => renderToStaticMarkup(createElement(Credits, { credits, isAdmin }))
 
   it('thanks everyone on the list, with what they did', () => {
     const html = render([{ name: 'דנה', note: 'סרקה את ספר המחזור' }, { name: 'יוסי' }])
@@ -262,8 +262,18 @@ describe('credits', () => {
     expect(html).toContain('יוסי')
   })
 
-  it('renders nothing when nobody is credited', () => {
+  it('renders nothing for everyone else when nobody is credited', () => {
     expect(render([])).toBe('')
     expect(render(undefined)).toBe('')
+  })
+
+  it('still shows the organizers an empty list, so they can fill it in', () => {
+    const html = render([], true)
+    expect(html).toContain('עריכה')
+    expect(html).toContain('עוד לא הודינו לאף אחד')
+  })
+
+  it('does not offer the edit button to anyone else', () => {
+    expect(render([{ name: 'דנה' }])).not.toContain('עריכה')
   })
 })

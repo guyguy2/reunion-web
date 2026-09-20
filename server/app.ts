@@ -26,6 +26,7 @@ import { albumPhotos } from './album.ts'
 import { addTape, listTapes } from './tapes.ts'
 import { addVideo, listVideos } from './videos.ts'
 import { addQuote, addQuoteComment, listQuotes, reactToQuote } from './quotes.ts'
+import { listCredits } from './credits.ts'
 import { addFeedback, resendSender } from './feedback.ts'
 import { resendMailer, type Mailer } from './email.ts'
 import { redeemSignInLink, sendSignInLink } from './recovery.ts'
@@ -124,7 +125,8 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     return sendFile(c, path.join(config.dataDir, folder), rel, 'private, max-age=31536000, immutable')
   })
 
-  app.get('/api/event', (c) => c.json({ ...loadEvent(), visits: getCounter(db, 'visits') }))
+  // The credits live in the database, not in EVENT_JSON, so the organizers can edit them from the site.
+  app.get('/api/event', (c) => c.json({ ...loadEvent(), credits: listCredits(db), visits: getCounter(db, 'visits') }))
 
   app.get('/api/memories/photos', async (c) => c.json(await albumPhotos(process.env.GOOGLE_PHOTOS_ALBUM_URL ?? '')))
 

@@ -136,6 +136,11 @@ export interface FeedbackMessage {
   createdAt: string
 }
 
+export interface Credit {
+  name: string
+  note?: string
+}
+
 export interface EventInfo {
   title: string
   tagline: string
@@ -147,8 +152,8 @@ export interface EventInfo {
   music: { youtubePlaylistId: string; mixtapeTitle: string }
   memories: { albumTitle: string; blurb: string; albumUrl: string }
   videos: { title: string; url: string; note?: string }[]
-  /** Whoever helped build the site or fill it with material. Absent when nobody is credited. */
-  credits?: { name: string; note?: string }[]
+  /** Whoever helped build the site or fill it with material. Edited by the organizers, kept in the database. */
+  credits?: Credit[]
   visits: number
 }
 
