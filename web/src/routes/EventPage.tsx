@@ -31,12 +31,16 @@ function Countdown({ date }: { date: string }) {
   )
 }
 
-/** The Claude mark, drawn inline so it needs no asset and takes the size of the text beside it. */
+/** The Claude Code critter, drawn as pixels on its own tile so it needs no asset and stays crisp at any size. */
 function ClaudeMark() {
   return (
-    <svg viewBox="0 0 24 24" className="inline-block size-4 align-[-0.2em]" aria-hidden="true">
-      {Array.from({ length: 12 }, (_, i) => (
-        <rect key={i} x="11.35" y="1.8" width="1.3" height="8.4" rx="0.65" fill="#d97757" transform={`rotate(${i * 30} 12 12)`} />
+    <svg viewBox="0 0 15 13" shapeRendering="crispEdges" className="inline-block size-7 align-[-0.5em]" aria-hidden="true">
+      <rect width="15" height="13" rx="2" fill="var(--color-ink)" shapeRendering="auto" />
+      {/* Body, with the eyes punched out. */}
+      <path fill="#d97757" fillRule="evenodd" d="M3 3h9v6H3z M5 4h1v2H5z M9 4h1v2H9z" />
+      <rect x="2" y="6" width="11" height="1" fill="#d97757" />
+      {[4, 6, 8, 10].map((x) => (
+        <rect key={x} x={x} y="9" width="1" height="2" fill="#d97757" />
       ))}
     </svg>
   )
@@ -89,9 +93,10 @@ export function Credits({ credits, isAdmin }: { credits: Credit[] | undefined; i
         )}
       </div>
       <p className="mt-1 text-sm">
-        תודה לכל מי שנבר בקלסרים, סרק תמונות ורדף אחרי אנשים בוואטסאפ. האתר הזה נבנה בהתנדבות ובאהבה <span aria-label="באהבה">❤️</span>, בעזרת{' '}
+        תודה לכל מי שנבר בקלסרים, סרק תמונות ורדף אחרי אנשים בוואטסאפ. האתר הזה נבנה בהתנדבות ובאהבה <span aria-label="באהבה">❤️</span>, בליווי צמוד של{' '}
+        <ClaudeMark />{' '}
         <a className="font-bold underline decoration-2 underline-offset-2" href="https://claude.com/claude-code" target="_blank" rel="noreferrer">
-          <ClaudeMark /> Claude Code
+          Claude Code
         </a>
       </p>
 
