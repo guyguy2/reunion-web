@@ -104,6 +104,8 @@ function Tape({ label, small }: { label: string; small?: boolean }) {
   )
 }
 
+const HINT_KEY = 'reunion.play-hinted'
+
 /** The persistent mixtape player: a shelf of YouTube and Spotify tapes wearing a cassette costume. */
 export default function Cassette() {
   const { event, role, me } = useStore()
@@ -123,6 +125,7 @@ export default function Cassette() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [hint, setHint] = useState(false)
 
   const tapes = useMemo(() => buildShelf(houseId, houseTitle, shelf), [houseId, houseTitle, shelf])
   const tape = pickTape(tapes, tapeId)
@@ -137,6 +140,27 @@ export default function Cassette() {
     if (!next) return
     autoplayNext.current = true
     setTapeId(next.id)
+  }
+
+  // Nobody expects music on a reunion page, so the first time someone signs in an arrow points at the play button.
+  useEffect(() => {
+    if (!me) return
+    try {
+      if (localStorage.getItem(HINT_KEY) === String(me.id)) return
+    } catch {
+      /* private mode: point anyway */
+    }
+    setHint(true)
+  }, [me?.id])
+
+  const hintTaken = () => {
+    if (!hint) return
+    setHint(false)
+    try {
+      localStorage.setItem(HINT_KEY, String(me?.id))
+    } catch {
+      /* private mode: it will point again next time */
+    }
   }
 
   const loadShelf = useCallback(() => api<ShelfTape[]>('/api/tapes').then(setShelf).catch(() => {}), [])
@@ -218,7 +242,7 @@ export default function Cassette() {
     if (ready) deck.current?.setVolume?.(volume)
   }, [ready, volume])
 
-  const toggle = () => deck.current?.toggle(playing)
+  const toggle = () => (hintTaken(), deck.current?.toggle(playing))
 
   useEscape(open && (() => (adding ? setAdding(false) : setOpen(false))), LAYER.drawer)
 
@@ -394,14 +418,21 @@ export default function Cassette() {
       </div>
 
       {!open && (
-        <div className="chunk flex items-center gap-2 p-1.5 pr-2">
-          <button onClick={() => setOpen(true)} aria-label="פתיחת נגן הקלטת" className="cursor-pointer">
+        <div className="chunk relative flex items-center gap-2 p-1.5 pr-2">
+          <button onClick={() => (hintTaken(), setOpen(true))} aria-label="פתיחת נגן הקלטת" className="cursor-pointer">
             <Tape label="" small />
           </button>
           {tape && ready && (
-            <button className="btn btn-sm pixel text-lg leading-none" onClick={toggle}>
-              {playing ? 'עצור' : 'נגן'}
-            </button>
+            <>
+              <button className="btn btn-sm pixel text-lg leading-none" onClick={toggle}>
+                {playing ? 'עצור' : 'נגן'}
+              </button>
+              {hint && !playing && (
+                <svg viewBox="0 0 24 34" aria-hidden="true" className="play-hint pointer-events-none absolute bottom-full end-2 mb-1 h-9 w-6 text-pink">
+                  <path d="M12 3v19M4 15l8 11 8-11" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </>
           )}
         </div>
       )}
