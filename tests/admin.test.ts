@@ -170,6 +170,13 @@ describe('credits', () => {
     expect(await credits(member)).toEqual([{ name: 'רק אני' }])
   })
 
+  it('keeps whatever order the organizers put the list in', async () => {
+    await put(admin, { credits: [{ name: 'ראשון' }, { name: 'שני' }, { name: 'שלישי' }] })
+    expect(await credits(member)).toEqual([{ name: 'ראשון' }, { name: 'שני' }, { name: 'שלישי' }])
+    await put(admin, { credits: [{ name: 'שלישי' }, { name: 'ראשון' }, { name: 'שני' }] })
+    expect(await credits(member)).toEqual([{ name: 'שלישי' }, { name: 'ראשון' }, { name: 'שני' }])
+  })
+
   it('is closed to members', async () => {
     expect((await put(member, { credits: [] })).status).toBe(403)
   })
