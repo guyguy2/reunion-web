@@ -212,18 +212,8 @@ body {
   animation: reel 2.4s linear infinite;
 }
 
-@keyframes blink {
-  50% {
-    opacity: 0.2;
-  }
-}
-.rec-dot {
-  animation: blink 1.2s steps(1) infinite;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .playing .reel,
-  .rec-dot {
+  .playing .reel {
     animation: none;
   }
   .face-tag .bubble {
