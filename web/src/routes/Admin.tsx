@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { api, type FeedbackMessage, type Person } from '../api.ts'
+import { api, matchesPerson, type FeedbackMessage, type Person } from '../api.ts'
 import { useStore } from '../store.tsx'
 import Tagger from './Tagger.tsx'
 import Roster from './Roster.tsx'
@@ -216,7 +216,7 @@ export default function Admin() {
 
   if (tagging) return <Tagger scene={tagging} onClose={() => setTaggingId(null)} />
 
-  const shown = people.filter((p) => p.name.toLowerCase().includes(filter.toLowerCase()))
+  const shown = people.filter((p) => matchesPerson(p, filter))
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-4 pb-28 sm:p-8 sm:pb-28">
@@ -303,7 +303,7 @@ export default function Admin() {
       {tab === 'people' && (
         <Section title={`אנשים (${people.length})`}>
           <form
-            className="flex gap-2"
+            className="flex items-end gap-2"
             onSubmit={(e) => {
               e.preventDefault()
               run('person', async () => {
@@ -312,7 +312,12 @@ export default function Admin() {
               })
             }}
           >
-            <input className="field" dir="auto" placeholder="הוספת שם לרשימה" value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <div className="min-w-0 flex-1">
+              <label className="label" htmlFor="people-add">
+                הוספת אדם לרשימה
+              </label>
+              <input id="people-add" className="field" dir="auto" placeholder="שם מלא" value={newName} onChange={(e) => setNewName(e.target.value)} />
+            </div>
             <button className="btn shrink-0" disabled={newName.trim().length < 2}>
               הוספה
             </button>
@@ -339,7 +344,20 @@ export default function Admin() {
             </div>
           </details>
 
-          <input className="field" type="search" dir="auto" placeholder="סינון" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <div>
+            <label className="label" htmlFor="people-search">
+              חיפוש ברשימה
+            </label>
+            <input
+              id="people-search"
+              className="field"
+              type="search"
+              dir="auto"
+              placeholder="שם, כינוי או שם קודם"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          </div>
           <ul className="max-h-96 divide-y-2 divide-ink/20 overflow-y-auto">
             {shown.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center gap-2 py-2">
