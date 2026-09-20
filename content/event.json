@@ -22,5 +22,9 @@
     "albumTitle": "Shared album",
     "blurb": "Photos from trips, parties and old haircuts. Add yours to the shared Google Photos album."
   },
-  "videos": []
+  "videos": [],
+  "credits": [
+    { "name": "Placeholder name", "note": "Scanned the yearbook" },
+    { "name": "Another name", "note": "Collected the videos" }
+  ]
 }

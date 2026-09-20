@@ -5,6 +5,7 @@ import { matchesPerson, type Person, type Scene, type Tape } from '../web/src/ap
 import ContactLinks from '../web/src/components/ContactLinks.tsx'
 import { daysLeft, rsvpShortcut } from '../web/src/components/Rsvp.tsx'
 import { NoteCard } from '../web/src/components/Notes.tsx'
+import { Credits } from '../web/src/routes/EventPage.tsx'
 import { firstName, greeting } from '../web/src/components/Welcome.tsx'
 import { nameKey, possibleDuplicates } from '../web/src/roster.ts'
 import { buildShelf, canSkip, nextTape, pickTape, spotifyUri, tapeFinished } from '../web/src/tapes.ts'
@@ -248,5 +249,21 @@ describe('RSVP shortcut', () => {
 
   it('says today and tomorrow in words', () => {
     expect([daysLeft(89), daysLeft(1), daysLeft(0), daysLeft(null)]).toEqual(['עוד 89 ימים', 'מחר!', 'היום!', 'האירוע'])
+  })
+})
+
+describe('credits', () => {
+  const render = (credits: { name: string; note?: string }[] | undefined) => renderToStaticMarkup(createElement(Credits, { credits }))
+
+  it('thanks everyone on the list, with what they did', () => {
+    const html = render([{ name: 'דנה', note: 'סרקה את ספר המחזור' }, { name: 'יוסי' }])
+    expect(html).toContain('דנה')
+    expect(html).toContain('סרקה את ספר המחזור')
+    expect(html).toContain('יוסי')
+  })
+
+  it('renders nothing when nobody is credited', () => {
+    expect(render([])).toBe('')
+    expect(render(undefined)).toBe('')
   })
 })
