@@ -96,7 +96,7 @@ export function Credits({ credits, isAdmin }: { credits: Credit[] | undefined; i
         תודה לכל מי שנבר בקלסרים, סרק תמונות ורדף אחרי אנשים בוואטסאפ. האתר הזה נבנה בהתנדבות ובאהבה <span aria-label="באהבה">❤️</span>, בליווי צמוד של{' '}
         <ClaudeMark />{' '}
         <a className="font-bold underline decoration-2 underline-offset-2" href="https://claude.com/claude-code" target="_blank" rel="noreferrer">
-          Claude Code
+          קלוד
         </a>
       </p>
 
