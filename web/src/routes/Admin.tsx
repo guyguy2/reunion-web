@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { api, type FeedbackMessage } from '../api.ts'
+import { api, type FeedbackMessage, type Person } from '../api.ts'
 import { useStore } from '../store.tsx'
 import Tagger from './Tagger.tsx'
 import Roster from './Roster.tsx'
@@ -20,6 +20,37 @@ function ConfirmButton({ label, confirmLabel, onConfirm, className = '' }: { lab
     <button className={`btn btn-plain btn-sm ${className}`} onClick={() => setArmed(true)}>
       {label}
     </button>
+  )
+}
+
+/** Renames one person in place. Organizers fix typos and fill in a first name here; the rest of a profile is its owner's to write. */
+function NameEditor({ person, onSave, onCancel }: { person: Person; onSave: (name: string) => void; onCancel: () => void }) {
+  const [name, setName] = useState(person.name)
+  const trimmed = name.trim()
+  return (
+    <form
+      className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault()
+        trimmed === person.name ? onCancel() : onSave(trimmed)
+      }}
+    >
+      <input
+        className="field min-w-40 flex-1"
+        dir="auto"
+        autoFocus
+        aria-label={`שם של ${person.name}`}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+      />
+      <button className="btn btn-sm shrink-0" disabled={trimmed.length < 2}>
+        שמירה
+      </button>
+      <button type="button" className="btn btn-plain btn-sm shrink-0" onClick={onCancel}>
+        ביטול
+      </button>
+    </form>
   )
 }
 
@@ -154,6 +185,7 @@ export default function Admin() {
   const [csv, setCsv] = useState('')
   const [newName, setNewName] = useState('')
   const [filter, setFilter] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
   const [tab, setTab] = useState<TabId>('overview')
   const tagging = scenes.find((s) => s.id === taggingId)
 
@@ -311,17 +343,36 @@ export default function Admin() {
           <ul className="max-h-96 divide-y-2 divide-ink/20 overflow-y-auto">
             {shown.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center gap-2 py-2">
-                <span className="min-w-0 flex-1" dir="auto">
-                  <span className="font-bold">{p.name}</span>
-                  <span className="ms-2 text-sm opacity-70">
-                    {p.claimed ? 'בבעלות' : 'ללא בעלות'}
-                    {p.email ? `, ${p.email}` : ''}
-                  </span>
-                </span>
-                {p.claimed && (
-                  <ConfirmButton label="איפוס בעלות" confirmLabel="לאפס" onConfirm={() => run('reset', () => api(`/api/admin/people/${p.id}/reset-claim`, { method: 'POST' }).then(() => 'הבעלות אופסה. קישור העריכה הישן כבר לא עובד.'))} />
+                {editingId === p.id ? (
+                  <NameEditor
+                    person={p}
+                    onCancel={() => setEditingId(null)}
+                    onSave={(name) =>
+                      run('rename', async () => {
+                        await api(`/api/admin/people/${p.id}`, { method: 'PATCH', json: { name } })
+                        setEditingId(null)
+                        return `השם עודכן ל"${name}".`
+                      })
+                    }
+                  />
+                ) : (
+                  <>
+                    <span className="min-w-0 flex-1" dir="auto">
+                      <span className="font-bold">{p.name}</span>
+                      <span className="ms-2 text-sm opacity-70">
+                        {p.claimed ? 'בבעלות' : 'ללא בעלות'}
+                        {p.email ? `, ${p.email}` : ''}
+                      </span>
+                    </span>
+                    <button className="btn btn-plain btn-sm" onClick={() => setEditingId(p.id)}>
+                      עריכת השם
+                    </button>
+                    {p.claimed && (
+                      <ConfirmButton label="איפוס בעלות" confirmLabel="לאפס" onConfirm={() => run('reset', () => api(`/api/admin/people/${p.id}/reset-claim`, { method: 'POST' }).then(() => 'הבעלות אופסה. קישור העריכה הישן כבר לא עובד.'))} />
+                    )}
+                    <ConfirmButton label="מחיקה" confirmLabel="למחוק באמת" className="text-pink" onConfirm={() => run('delete', () => api(`/api/admin/people/${p.id}`, { method: 'DELETE' }).then(() => {}))} />
+                  </>
                 )}
-                <ConfirmButton label="מחיקה" confirmLabel="למחוק באמת" className="text-pink" onConfirm={() => run('delete', () => api(`/api/admin/people/${p.id}`, { method: 'DELETE' }).then(() => {}))} />
               </li>
             ))}
           </ul>

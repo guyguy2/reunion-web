@@ -110,3 +110,37 @@ describe('no delete-everything', () => {
     expect(res.status).toBe(404)
   })
 })
+
+describe('renaming a person', () => {
+  const rename = (cookie: string, id: number, name: unknown) =>
+    app.request(`/api/admin/people/${id}`, {
+      method: 'PATCH',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+  const nameOf = (id: number) => (db.prepare('SELECT name FROM people WHERE id = ?').get(id) as { name: string }).name
+
+  it('is for organizers only', async () => {
+    const id = insertPerson(db, { name: 'D. Levi' })
+    expect((await rename(member, id, 'Dana Levi')).status).toBe(403)
+    expect(nameOf(id)).toBe('D. Levi')
+  })
+
+  it('trims the new name and leaves the rest of the profile alone', async () => {
+    const id = insertPerson(db, { name: 'D. Levi', city: 'Haifa', claimed_at: '2026-09-18T00:00:00Z' })
+    const res = await rename(admin, id, '  Dana Levi  ')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ name: 'Dana Levi', city: 'Haifa', claimed: true })
+  })
+
+  it('will not blank out a name', async () => {
+    const id = insertPerson(db, { name: 'Yossi Cohen' })
+    expect((await rename(admin, id, '   ')).status).toBe(400)
+    expect((await rename(admin, id, null)).status).toBe(400)
+    expect(nameOf(id)).toBe('Yossi Cohen')
+  })
+
+  it('says so when there is nobody with that id', async () => {
+    expect((await rename(admin, 999999, 'Nobody')).status).toBe(404)
+  })
+})
