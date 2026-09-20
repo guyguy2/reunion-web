@@ -1,7 +1,7 @@
 import sharp, { type OverlayOptions } from 'sharp'
 import type { Db } from './db.ts'
-import { saveUpload, type Box } from './images.ts'
-import { insertPerson } from './people.ts'
+import { type Box } from './images.ts'
+import { addPhoto, insertPerson } from './people.ts'
 import { addGroupScene, insertTag, rebuildWall } from './scenes.ts'
 
 const FIRST = ['Jennifer', 'Michael', 'Jessica', 'Chris', 'Amanda', 'Josh', 'Ashley', 'Matt', 'Sarah', 'Brian', 'Stephanie', 'Kevin', 'Nicole', 'Jason', 'Heather', 'Ryan', 'Melissa', 'Eric', 'Tiffany', 'Justin']
@@ -97,32 +97,27 @@ export async function loadDemoData(db: Db, dataDir: string) {
     const first = FIRST[i % FIRST.length]
     const last = LAST[(i * 7 + Math.floor(i / FIRST.length)) % LAST.length]
     const filledIn = i % 3 === 0
-    const thenPhoto = await saveUpload(dataDir, await sharp(Buffer.from(portraitSvg(i, { backdrop: true }))).png().toBuffer())
-    const nowPhoto = filledIn
-      ? await saveUpload(dataDir, await sharp(Buffer.from(portraitSvg(i, { backdrop: true, aged: true }))).png().toBuffer())
-      : null
     const handle = `${first}.${last}`.toLowerCase()
-    ids.push(
-      insertPerson(db, {
-        name: `${first} ${last}`,
-        nickname: i % 9 === 0 ? `${first.slice(0, 3)}ster` : null,
-        former_name: i % 11 === 0 ? pick(LAST) : null,
-        then_photo: thenPhoto,
-        now_photo: nowPhoto,
-        quote: pick(QUOTES),
-        ...(filledIn
-          ? {
-              email: `${handle}@example.com`,
-              instagram: handle.replace('.', '_'),
-              city: pick(CITIES),
-              bio: pick(BIOS),
-              attending: pick(['yes', 'yes', 'maybe', 'no']),
-              // Demo profiles count as claimed but have no edit token, so nobody can edit them.
-              claimed_at: new Date().toISOString(),
-            }
-          : {}),
-      }),
-    )
+    const id = insertPerson(db, {
+      name: `${first} ${last}`,
+      nickname: i % 9 === 0 ? `${first.slice(0, 3)}ster` : null,
+      former_name: i % 11 === 0 ? pick(LAST) : null,
+      quote: pick(QUOTES),
+      ...(filledIn
+        ? {
+            email: `${handle}@example.com`,
+            instagram: handle.replace('.', '_'),
+            city: pick(CITIES),
+            bio: pick(BIOS),
+            attending: pick(['yes', 'yes', 'maybe', 'no']),
+            // Demo profiles count as claimed but have no edit token, so nobody can edit them.
+            claimed_at: new Date().toISOString(),
+          }
+        : {}),
+    })
+    await addPhoto(db, dataDir, id, 'then', await sharp(Buffer.from(portraitSvg(i, { backdrop: true }))).png().toBuffer())
+    if (filledIn) await addPhoto(db, dataDir, id, 'now', await sharp(Buffer.from(portraitSvg(i, { backdrop: true, aged: true }))).png().toBuffer())
+    ids.push(id)
   }
   await rebuildWall(db, dataDir)
   const { image, boxes } = await groupPhoto()

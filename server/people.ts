@@ -1,4 +1,5 @@
-import type { Db, PersonRow } from './db.ts'
+import type { Db, PersonPhotoRow, PersonRow, PhotoKind } from './db.ts'
+import { removeUpload, saveUpload } from './images.ts'
 
 export const EDITABLE_FIELDS = [
   'name',
@@ -23,9 +24,15 @@ const MAX_LENGTH: Record<string, number> = { bio: 1500, quote: 300 }
 
 export type View = 'public' | 'full'
 
+/** How many "then" photos and how many "now" photos one person may have. */
+export const MAX_PHOTOS_PER_KIND = 3
+
 /** Shape sent to the browser. Public view drops hidden contact fields; the token hash never leaves the server. */
 export function serializePerson(row: PersonRow, view: View) {
   const full = view === 'full'
+  const photos = (kind: PhotoKind) => (row.photos ?? []).filter((p) => p.kind === kind).map((p) => ({ id: p.id, url: `/media/${p.path}` }))
+  const thenPhotos = photos('then')
+  const nowPhotos = photos('now')
   return {
     id: row.id,
     name: row.name,
@@ -41,8 +48,10 @@ export function serializePerson(row: PersonRow, view: View) {
     city: row.city,
     bio: row.bio,
     quote: row.quote,
-    thenPhoto: row.then_photo ? `/media/${row.then_photo}` : null,
-    nowPhoto: row.now_photo ? `/media/${row.now_photo}` : null,
+    thenPhoto: thenPhotos[0]?.url ?? null,
+    nowPhoto: nowPhotos[0]?.url ?? null,
+    thenPhotos,
+    nowPhotos,
     attending: row.attending,
     gender: row.gender,
     inMemoriam: Boolean(row.in_memoriam),
@@ -124,11 +133,62 @@ export function parsePersonInput(body: unknown, opts: { admin: boolean }): Recor
 }
 
 export function getPerson(db: Db, id: number): PersonRow | undefined {
-  return db.prepare('SELECT * FROM people WHERE id = ?').get(id) as PersonRow | undefined
+  const row = db.prepare('SELECT * FROM people WHERE id = ?').get(id) as PersonRow | undefined
+  if (row) row.photos = listPhotos(db, id)
+  return row
 }
 
 export function listPeople(db: Db): PersonRow[] {
-  return db.prepare('SELECT * FROM people ORDER BY name COLLATE NOCASE').all() as unknown as PersonRow[]
+  const rows = db.prepare('SELECT * FROM people ORDER BY name COLLATE NOCASE').all() as unknown as PersonRow[]
+  const photos = db.prepare('SELECT id, person_id, kind, path FROM person_photos ORDER BY id').all() as unknown as PersonPhotoRow[]
+  const byPerson = new Map<number, PersonPhotoRow[]>()
+  for (const photo of photos) byPerson.set(photo.person_id, [...(byPerson.get(photo.person_id) ?? []), photo])
+  for (const row of rows) row.photos = byPerson.get(row.id) ?? []
+  return rows
+}
+
+export function listPhotos(db: Db, personId: number, kind?: PhotoKind): PersonPhotoRow[] {
+  const where = kind ? 'person_id = ? AND kind = ?' : 'person_id = ?'
+  const args = kind ? [personId, kind] : [personId]
+  return db.prepare(`SELECT id, person_id, kind, path FROM person_photos WHERE ${where} ORDER BY id`).all(...args) as unknown as PersonPhotoRow[]
+}
+
+/**
+ * person_photos is the source of truth; people.then_photo / people.now_photo mirror the oldest photo of
+ * each kind for the portrait wall (images.ts, scenes.ts). Only addPhoto and deletePhoto write either one.
+ */
+function syncPrimary(db: Db, personId: number, kind: PhotoKind) {
+  const column = kind === 'then' ? 'then_photo' : 'now_photo'
+  db.prepare(`UPDATE people SET ${column} = (SELECT path FROM person_photos WHERE person_id = ? AND kind = ? ORDER BY id LIMIT 1) WHERE id = ?`)
+    .run(personId, kind, personId)
+}
+
+/** Stores an uploaded image and attaches it to the person. Throws once they are at the cap. */
+export async function addPhoto(db: Db, dataDir: string, personId: number, kind: PhotoKind, input: Buffer): Promise<PersonPhotoRow> {
+  if (listPhotos(db, personId, kind).length >= MAX_PHOTOS_PER_KIND) {
+    throw new Error(`אפשר להעלות עד ${MAX_PHOTOS_PER_KIND} תמונות. מחקו אחת כדי להוסיף חדשה.`)
+  }
+  const rel = await saveUpload(dataDir, input)
+  const result = db.prepare('INSERT INTO person_photos (person_id, kind, path) VALUES (?, ?, ?)').run(personId, kind, rel)
+  syncPrimary(db, personId, kind)
+  return { id: Number(result.lastInsertRowid), person_id: personId, kind, path: rel }
+}
+
+/** Detaches one photo and deletes its file. Returns false if it is not this person's. */
+export function deletePhoto(db: Db, dataDir: string, personId: number, photoId: number): boolean {
+  const photo = db.prepare('SELECT id, person_id, kind, path FROM person_photos WHERE id = ? AND person_id = ?').get(photoId, personId) as
+    | PersonPhotoRow
+    | undefined
+  if (!photo) return false
+  db.prepare('DELETE FROM person_photos WHERE id = ?').run(photo.id)
+  removeUpload(dataDir, photo.path)
+  syncPrimary(db, personId, photo.kind)
+  return true
+}
+
+/** Drops every photo of a kind (or all of them), files included. */
+export function deletePhotos(db: Db, dataDir: string, personId: number, kind?: PhotoKind) {
+  for (const photo of listPhotos(db, personId, kind)) deletePhoto(db, dataDir, personId, photo.id)
 }
 
 export function insertPerson(db: Db, fields: Record<string, string | number | null>): number {

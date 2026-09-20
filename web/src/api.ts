@@ -1,5 +1,10 @@
 export type Role = 'member' | 'admin'
 
+export interface Photo {
+  id: number
+  url: string
+}
+
 export interface Person {
   id: number
   name: string
@@ -15,8 +20,11 @@ export interface Person {
   city: string | null
   bio: string | null
   quote: string | null
+  /** The first "then" / "now" photo, for the wall, the tiles and the then-and-now slider. */
   thenPhoto: string | null
   nowPhoto: string | null
+  thenPhotos: Photo[]
+  nowPhotos: Photo[]
   attending: 'yes' | 'no' | 'maybe' | null
   gender: 'm' | 'f' | null
   inMemoriam: boolean

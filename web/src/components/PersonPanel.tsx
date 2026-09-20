@@ -63,6 +63,8 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
   const [owner, setOwner] = useState<NewOwner>({ pin: '', email: '' })
   const faces = appearances(scenes, person.id)
   const thenSrc = person.thenPhoto ?? (faces.length ? faceUrl(faces[faces.length - 1].tag) : null)
+  // The first photo of each kind is already on show above, in the then-and-now slider.
+  const extraPhotos = [...person.nowPhotos.slice(1), ...person.thenPhotos.slice(1)]
   const isMe = me?.id === person.id
   // Owners can take their name off a wrongly tagged face; organizers can do it for anyone.
   const canUntag = isMe || role === 'admin'
@@ -153,6 +155,19 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
               <img slot="first" src={thenSrc} alt="אז" className="aspect-[4/5] w-full object-cover" />,
               <img slot="second" src={person.nowPhoto} alt="היום" className="aspect-[4/5] w-full object-cover" />,
             )}
+          </div>
+        </div>
+      )}
+
+      {extraPhotos.length > 0 && (
+        <div className="mt-5">
+          <h3 className="label">עוד תמונות</h3>
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {extraPhotos.map((photo) => (
+              <div key={photo.id} className="polaroid w-24 shrink-0 pb-2">
+                <img src={photo.url} alt="" className="aspect-[4/5] w-full object-cover" loading="lazy" />
+              </div>
+            ))}
           </div>
         </div>
       )}

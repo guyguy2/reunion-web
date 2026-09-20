@@ -1,10 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { api, editToken, matchesPerson, type Person } from '../api.ts'
+import { api, editToken, matchesPerson, type Person, type Photo } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { NotesInbox } from '../components/Notes.tsx'
 import CodeLogin, { NewOwnerFields, newOwnerReady, type NewOwner } from '../components/CodeLogin.tsx'
 import { LAYER, useEscape } from '../useEscape.ts'
+
+/** Kept in step with MAX_PHOTOS_PER_KIND on the server. */
+const MAX_PHOTOS = 3
 
 type Draft = Partial<Record<'name' | 'formerName' | 'nickname' | 'email' | 'instagram' | 'linkedin' | 'facebook' | 'x' | 'website' | 'phone' | 'city' | 'bio' | 'quote', string>> & {
   attending: Person['attending']
@@ -43,33 +46,63 @@ function toDraft(p: Person): Draft {
   }
 }
 
-function PhotoField({ label, hint, src, onUpload }: { label: string; hint: string; src: string | null; onUpload: (file: File) => Promise<void> }) {
+/** Up to MAX_PHOTOS pictures of one kind: the first is the one the yearbook uses. */
+function PhotoField({
+  label,
+  hint,
+  photos,
+  onUpload,
+  onRemove,
+}: {
+  label: string
+  hint: string
+  photos: Photo[]
+  onUpload: (files: File[]) => Promise<void>
+  onRemove: (photo: Photo) => Promise<void>
+}) {
   const [busy, setBusy] = useState(false)
+  const room = MAX_PHOTOS - photos.length
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true)
+    await action().finally(() => setBusy(false))
+  }
+
   return (
-    <div className="flex items-center gap-4">
-      <div className="polaroid w-24 shrink-0 pb-2">
-        {src ? <img src={src} alt="" className="aspect-[4/5] w-full object-cover" /> : <div className="aspect-[4/5] w-full bg-paper" />}
+    <div>
+      <p className="label">{label}</p>
+      <p className="mb-3 text-sm opacity-70">{hint}</p>
+      <div className="flex flex-wrap items-start gap-3">
+        {photos.map((photo, i) => (
+          <div key={photo.id} className="w-24">
+            <div className="polaroid w-full pb-2">
+              <img src={photo.url} alt="" className="aspect-[4/5] w-full object-cover" />
+            </div>
+            {i === 0 && <p className="mt-1 text-center text-xs opacity-70">הראשית</p>}
+            <button className="btn btn-plain btn-sm mt-1 w-full px-1 text-xs" disabled={busy} onClick={() => run(() => onRemove(photo))}>
+              הסרה
+            </button>
+          </div>
+        ))}
+        {room > 0 && (
+          <label className={`btn btn-plain btn-sm ${busy ? 'opacity-50' : ''}`}>
+            {busy ? 'מפתחים...' : photos.length ? 'הוספת תמונה' : 'העלאת תמונה'}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              disabled={busy}
+              onChange={async (e) => {
+                const files = [...(e.target.files ?? [])].slice(0, room)
+                e.target.value = ''
+                if (files.length) await run(() => onUpload(files))
+              }}
+            />
+          </label>
+        )}
       </div>
-      <div>
-        <p className="label">{label}</p>
-        <p className="mb-2 text-sm opacity-70">{hint}</p>
-        <label className={`btn btn-plain btn-sm ${busy ? 'opacity-50' : ''}`}>
-          {busy ? 'מפתחים...' : src ? 'החלפת תמונה' : 'העלאת תמונה'}
-          <input
-            type="file"
-            accept="image/*"
-            className="sr-only"
-            disabled={busy}
-            onChange={async (e) => {
-              const file = e.target.files?.[0]
-              e.target.value = ''
-              if (!file) return
-              setBusy(true)
-              await onUpload(file).finally(() => setBusy(false))
-            }}
-          />
-        </label>
-      </div>
+      <p className="mt-2 text-sm opacity-70">{room > 0 ? `אפשר להוסיף עוד ${room}.` : `זה המקסימום (${MAX_PHOTOS}).`}</p>
     </div>
   )
 }
@@ -263,11 +296,24 @@ export default function Me() {
     }
   }
 
-  async function upload(kind: 'then' | 'now', file: File) {
-    const body = new FormData()
-    body.set('photo', file)
+  async function upload(kind: 'then' | 'now', files: File[]) {
     try {
-      await api(`/api/me/photo/${kind}`, { body })
+      // One at a time: the server counts against the cap per upload.
+      for (const file of files) {
+        const body = new FormData()
+        body.set('photo', file)
+        await api(`/api/me/photo/${kind}`, { body })
+      }
+      await reload()
+    } catch (err) {
+      await reload()
+      setStatus({ kind: 'error', text: (err as Error).message })
+    }
+  }
+
+  async function removePhoto(photo: Photo) {
+    try {
+      await api(`/api/me/photo/${photo.id}`, { method: 'DELETE' })
       await reload()
     } catch (err) {
       setStatus({ kind: 'error', text: (err as Error).message })
@@ -376,12 +422,19 @@ export default function Me() {
 
       <div className="chunk space-y-5 p-5">
         <h2 className="font-display text-xl">אז והיום</h2>
-        <PhotoField label="היום" hint="תמונה עדכנית שלך. תופיע ליד התמונה מ-1996." src={me.nowPhoto} onUpload={(f) => upload('now', f)} />
+        <PhotoField
+          label="היום"
+          hint={`תמונות עדכניות שלך, עד ${MAX_PHOTOS}. הראשונה תופיע ליד התמונה מ-1996.`}
+          photos={me.nowPhotos}
+          onUpload={(f) => upload('now', f)}
+          onRemove={removePhoto}
+        />
         <PhotoField
           label="אז (לא חובה)"
-          hint="יש לכם תמונה טובה יותר משנות ה-90? אפשר להשתמש בה במקום."
-          src={me.thenPhoto}
+          hint={`יש לכם תמונות טובות יותר משנות ה-90? אפשר להעלות עד ${MAX_PHOTOS}.`}
+          photos={me.thenPhotos}
           onUpload={(f) => upload('then', f)}
+          onRemove={removePhoto}
         />
       </div>
 

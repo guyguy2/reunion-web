@@ -18,8 +18,8 @@ import {
   startSession,
   type AppEnv,
 } from './auth.ts'
-import { MAX_UPLOAD_BYTES, cropFace, readImageField, removeUpload, saveUpload } from './images.ts'
-import { getPerson, insertPerson, listPeople, parsePersonInput, serializePerson, updatePerson } from './people.ts'
+import { MAX_UPLOAD_BYTES, cropFace, readImageField } from './images.ts'
+import { addPhoto, deletePhoto, deletePhotos, getPerson, insertPerson, listPeople, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { getScene, listScenes, serializeTag } from './scenes.ts'
 import { adminRoutes } from './admin.ts'
 import { albumPhotos } from './album.ts'
@@ -360,15 +360,18 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
     const kind = c.req.param('kind')
     if (kind !== 'then' && kind !== 'now') return c.json({ error: 'Unknown photo kind' }, 400)
-    let rel: string
     try {
-      rel = await saveUpload(config.dataDir, await readImageField(c, 'photo', MAX_UPLOAD_BYTES))
+      await addPhoto(db, config.dataDir, me.id, kind, await readImageField(c, 'photo', MAX_UPLOAD_BYTES))
     } catch (err) {
       return c.json({ error: (err as Error).message || 'לא הצלחנו לקרוא את התמונה' }, 400)
     }
-    const column = kind === 'then' ? 'then_photo' : 'now_photo'
-    removeUpload(config.dataDir, me[column])
-    updatePerson(db, me.id, { [column]: rel })
+    return c.json(serializePerson(getPerson(db, me.id)!, 'full'))
+  })
+
+  app.delete('/api/me/photo/:id', (c) => {
+    const me = owner(c)
+    if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
+    if (!deletePhoto(db, config.dataDir, me.id, Number(c.req.param('id')))) return c.json({ error: 'Not found' }, 404)
     return c.json(serializePerson(getPerson(db, me.id)!, 'full'))
   })
 
@@ -376,10 +379,10 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   app.delete('/api/me', (c) => {
     const me = owner(c)
     if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
-    removeUpload(config.dataDir, me.now_photo)
+    deletePhotos(db, config.dataDir, me.id, 'now')
     updatePerson(db, me.id, {
       nickname: null, email: null, instagram: null, linkedin: null, facebook: null, website: null, phone: null, x: null, city: null, bio: null, quote: null,
-      now_photo: null, attending: null, claimed_at: null, edit_token_hash: null, pin_hash: null,
+      attending: null, claimed_at: null, edit_token_hash: null, pin_hash: null,
     })
     db.prepare('DELETE FROM notes WHERE recipient_id = ?').run(me.id)
     db.prepare('DELETE FROM device_tokens WHERE person_id = ?').run(me.id)
