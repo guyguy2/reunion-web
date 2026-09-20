@@ -230,6 +230,12 @@ describe('profiles', () => {
     expect(after.nowPhotos).toHaveLength(MAX_PHOTOS_PER_KIND - 1)
     expect(after.nowPhoto).toBe(second.url)
     expect((await app.request(first.url, { headers: { Cookie: member } })).status).toBe(404)
+
+    // The profile page reads its photos from here, not from the upload response.
+    const mine = await (await app.request('/api/me', { headers })).json()
+    expect(mine.nowPhotos).toHaveLength(MAX_PHOTOS_PER_KIND - 1)
+    expect(mine.nowPhoto).toBe(second.url)
+    expect(mine.thenPhotos).toHaveLength(1)
   })
 
   it('will not let one owner delete a photo that belongs to someone else', async () => {

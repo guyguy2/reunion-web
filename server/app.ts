@@ -19,7 +19,7 @@ import {
   type AppEnv,
 } from './auth.ts'
 import { MAX_UPLOAD_BYTES, cropFace, readImageField } from './images.ts'
-import { addPhoto, deletePhoto, deletePhotos, getPerson, insertPerson, listPeople, parsePersonInput, serializePerson, updatePerson } from './people.ts'
+import { addPhoto, deletePhoto, deletePhotos, getPerson, insertPerson, listPeople, listPhotos, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { getScene, listScenes, serializeTag } from './scenes.ts'
 import { adminRoutes } from './admin.ts'
 import { albumPhotos } from './album.ts'
@@ -290,12 +290,15 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   const owner = (c: Context): PersonRow | undefined => {
     const token = c.req.header('x-edit-token')
     if (!token) return undefined
-    return db
+    const row = db
       .prepare(
         `SELECT * FROM people WHERE edit_token_hash = ?1
          OR id = (SELECT person_id FROM device_tokens WHERE token_hash = ?1)`,
       )
       .get(sha256(token)) as PersonRow | undefined
+    // Attached here too, so a row from this lookup serializes the same as one from getPerson.
+    if (row) row.photos = listPhotos(db, row.id)
+    return row
   }
 
   app.put('/api/me/pin', async (c) => {
