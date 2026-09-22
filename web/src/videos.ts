@@ -10,9 +10,9 @@ export const PROVIDER_NAME: Record<Video['provider'], string> = {
 
 const GPHOTOS = 'https://lh3.googleusercontent.com/pw/'
 
-/** Album videos play in our own player: 720p when Google made one, else the 360p copy every video has. */
-export function streamUrls(video: Pick<Video, 'externalId'>): string[] {
-  return ['m22', 'm18'].map((size) => `${GPHOTOS}${video.externalId}=${size}`)
+/** Album videos play in our own player, from the 360p copy Google makes of every video. */
+export function streamUrl(video: Pick<Video, 'externalId'>): string {
+  return `${GPHOTOS}${video.externalId}=m18`
 }
 
 /** The player to load on click. Built from the validated ID, never from the pasted link. */

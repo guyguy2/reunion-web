@@ -470,6 +470,10 @@ describe('video library', () => {
       { id: -1000, provider: 'gphotos', externalId: 'vid-1', title: 'סרטון מהאלבום המשותף', note: 'אורך: 2:02:09', addedBy: null, url: album },
     ])
     expect([formatDuration(65_000), formatDuration(3_600_000)]).toEqual(['1:05', '1:00:00'])
+    const named = albumVideoEntries([{ src: 'https://lh3.googleusercontent.com/pw/vid-1', width: 480, height: 360, durationMs: 1000, itemId: 'AF1Qipabc' }], album, {
+      AF1Qipabc: 'End of year play',
+    })
+    expect(named[0].title).toBe('End of year play')
   })
 
   it("lists the organizers' videos first, and skips ones it cannot play", () => {

@@ -147,7 +147,8 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   // Videos in the shared Google Photos album show up here too, after the pasted links.
   app.get('/api/videos', async (c) => {
     const albumUrl = process.env.GOOGLE_PHOTOS_ALBUM_URL ?? ''
-    return c.json([...listVideos(db, loadEvent().videos ?? []), ...albumVideoEntries(await albumVideos(albumUrl), albumUrl)])
+    const event = loadEvent()
+    return c.json([...listVideos(db, event.videos ?? []), ...albumVideoEntries(await albumVideos(albumUrl), albumUrl, event.memories.videoTitles)])
   })
 
   app.post('/api/videos', async (c) => {

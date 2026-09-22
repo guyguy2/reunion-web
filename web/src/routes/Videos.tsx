@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, type Video } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { mixtape } from '../components/Cassette.tsx'
-import { PROVIDER_NAME, embedUrl, isTallEmbed, streamUrls, thumbnailUrl } from '../videos.ts'
+import { PROVIDER_NAME, embedUrl, isTallEmbed, streamUrl, thumbnailUrl } from '../videos.ts'
 import { LAYER, useEscape } from '../useEscape.ts'
 
 const PROVIDER_COLOR: Record<Video['provider'], string> = {
@@ -23,12 +23,7 @@ function Tape({ video, onRemove }: { video: Video; onRemove?: () => void }) {
     <article className="chunk overflow-hidden">
       <div className={`relative bg-ink ${tall ? 'h-[40rem]' : 'aspect-video'}`}>
         {playing && video.provider === 'gphotos' ? (
-          // A 404 on the 720p copy makes the browser fall through to the next source.
-          <video className="absolute inset-0 h-full w-full" controls autoPlay playsInline poster={thumb ?? undefined} title={video.title}>
-            {streamUrls(video).map((src) => (
-              <source key={src} src={src} type="video/mp4" />
-            ))}
-          </video>
+          <video className="absolute inset-0 h-full w-full" src={streamUrl(video)} controls autoPlay playsInline poster={thumb ?? undefined} title={video.title} />
         ) : playing ? (
           <iframe
             className={`absolute inset-0 h-full w-full ${tall ? 'bg-white' : ''}`}

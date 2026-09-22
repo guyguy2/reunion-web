@@ -59,7 +59,7 @@ describe('parseAlbumPage', () => {
     const video = `["AF1Qipvid",["https://lh3.googleusercontent.com/pw/vid",480,360,null,null,null,null,null,[7328577,null,480,360,null,4,null,null,null,0,null,null,null,["https://lh3.googleusercontent.com/pw/vid"]],[1]],1,"k",0,1790000000000,["x"],{"15":1,"76647426":[7328577,null,480,360,null,4,null,null,null,0,null,null,null,["https://lh3.googleusercontent.com/pw/vid"]]}]`
     const photo = `["AF1Qippic",["https://lh3.googleusercontent.com/pw/pic",800,600,null,[1]],1,"k",0,1789000000000,["x"],{"15":1}]`
     expect(parseAlbumPage(`[${photo},${video}]`)).toEqual([
-      { src: 'https://lh3.googleusercontent.com/pw/vid', width: 480, height: 360, durationMs: 7328577 },
+      { src: 'https://lh3.googleusercontent.com/pw/vid', width: 480, height: 360, durationMs: 7328577, itemId: 'AF1Qipvid' },
       { src: 'https://lh3.googleusercontent.com/pw/pic', width: 800, height: 600 },
     ])
   })
