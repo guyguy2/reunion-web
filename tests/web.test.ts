@@ -62,6 +62,13 @@ describe('notes', () => {
     expect(card({ ...note, read: true })).toContain('notebook-paper')
     expect(card({ ...note, read: true, from: { id: 3, name: 'Guy' } })).toContain('>Guy</p>')
   })
+
+  it('offers a reply only on an opened note that can be answered', () => {
+    const withReply = (n: typeof note) => renderToStaticMarkup(createElement(NoteCard, { note: n, index: 0, onOpen: () => {}, onThrowAway: () => {}, onReply: () => {} }))
+    expect(withReply({ ...note, read: true })).toContain('לענות')
+    expect(withReply(note)).not.toContain('לענות')
+    expect(card({ ...note, read: true })).not.toContain('לענות')
+  })
 })
 
 describe('yearbook grid', () => {
