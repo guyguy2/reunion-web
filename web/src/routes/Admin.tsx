@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { api, matchesPerson, type FeedbackMessage, type Person } from '../api.ts'
+import { Link, useNavigate } from 'react-router-dom'
+import { api, faceUrl, matchesPerson, type FeedbackMessage, type Person } from '../api.ts'
 import { useStore } from '../store.tsx'
+import { unknownFaces } from '../yearbook.ts'
 import Tagger from './Tagger.tsx'
 import Roster from './Roster.tsx'
 
@@ -54,9 +56,9 @@ function NameEditor({ person, onSave, onCancel }: { person: Person; onSave: (nam
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
-    <section className="chunk space-y-4 p-5">
+    <section id={id} className="chunk scroll-mt-4 space-y-4 p-5">
       <h2 className="font-display text-xl">{title}</h2>
       {children}
     </section>
@@ -88,7 +90,7 @@ function FeedbackInbox() {
   }, [])
 
   return (
-    <Section title={`משוב (${messages?.length ?? 0})`}>
+    <Section title={`משוב (${messages?.length ?? 0})`} id="feedback">
       <ul className="max-h-96 space-y-2 overflow-y-auto">
         {messages?.map((m) => (
           <li key={m.id} className="space-y-1 rounded-lg border-[3px] border-ink p-3">
@@ -130,19 +132,109 @@ interface Stats {
   visits: number
 }
 
-function StatTile({ label, value, detail, color = 'bg-white' }: { label: string; value: number | string; detail?: string; color?: string }) {
-  return (
-    <div className={`chunk p-3 ${color}`}>
+/**
+ * A number, and where to see what's behind it. Tiles that open a list, or lead to a page, look like buttons; tiles
+ * that are only a number are drawn flat, so they don't invite a click.
+ */
+function StatTile({
+  label,
+  value,
+  detail,
+  color = 'bg-white',
+  open,
+  onClick,
+  to,
+}: {
+  label: string
+  value: number | string
+  detail?: string
+  color?: string
+  open?: boolean
+  onClick?: () => void
+  to?: string
+}) {
+  const body = (
+    <>
       <p className="text-sm font-bold">{label}</p>
       <p className="font-display text-3xl leading-tight">{value}</p>
       {detail && <p className="text-xs opacity-70">{detail}</p>}
+    </>
+  )
+  const clickable = `chunk block p-3 text-start transition-transform hover:-translate-y-0.5 ${color}`
+  if (to) {
+    return (
+      <Link to={to} className={clickable}>
+        {body}
+      </Link>
+    )
+  }
+  if (onClick) {
+    return (
+      <button className={`${clickable} cursor-pointer ${open ? 'translate-y-0.5 shadow-none' : ''}`} aria-expanded={open} onClick={onClick}>
+        {body}
+      </button>
+    )
+  }
+  return <div className={`rounded-xl border-[3px] border-dashed border-ink/40 p-3 ${color}`}>{body}</div>
+}
+
+/** One titled list of names. Each name opens that person's profile. */
+function NameList({ title, people }: { title: string; people: Person[] }) {
+  const navigate = useNavigate()
+  return (
+    <div className="space-y-2">
+      <h3 className="font-bold">
+        {title} ({people.length})
+      </h3>
+      {people.length === 0 ? (
+        <p className="text-sm opacity-70">אין עדיין.</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {[...people]
+            .sort((a, b) => a.name.localeCompare(b.name, 'he'))
+            .map((p) => (
+              <button key={p.id} className="btn btn-plain btn-sm" dir="auto" onClick={() => navigate(`/p/${p.id}`)}>
+                {p.name}
+              </button>
+            ))}
+        </div>
+      )}
     </div>
   )
 }
 
+/** The unnamed faces, small. Naming them happens on the friends page, where each opens its own window. */
+function UnnamedFaces() {
+  const { scenes } = useStore()
+  const faces = unknownFaces(scenes).filter((t) => !t.staff)
+  return (
+    <div className="space-y-2">
+      <h3 className="font-bold">פנים בלי שם ({faces.length})</h3>
+      <div className="flex flex-wrap gap-2">
+        {faces.map((tag) => (
+          <Link key={tag.id} to="/friends" className="polaroid w-16 p-1 pb-1" title={tag.caption ?? undefined}>
+            <img src={faceUrl(tag)} alt="" className="aspect-square w-full object-cover" loading="lazy" />
+          </Link>
+        ))}
+      </div>
+      {faces.length > 0 && (
+        <Link to="/friends" className="btn btn-sm">
+          לזיהוי הפנים בדף החברים
+        </Link>
+      )}
+    </div>
+  )
+}
+
+type ListId = 'attending' | 'claimed' | 'pin' | 'photo' | 'faces'
+
 /** The numbers at a glance. Notes are shown as counts only; their content stays private. */
-function Overview() {
+function Overview({ onTab }: { onTab: (tab: TabId) => void }) {
+  const { people } = useStore()
   const [stats, setStats] = useState<Stats | null>(null)
+  const [list, setList] = useState<ListId | null>(null)
+  const toggle = (id: ListId) => ({ open: list === id, onClick: () => setList(list === id ? null : id) })
+  const owners = people.filter((p) => p.claimed)
 
   useEffect(() => {
     api<Stats>('/api/admin/stats').then(setStats)
@@ -153,19 +245,40 @@ function Overview() {
   return (
     <Section title="סקירה">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-        <StatTile label="בוגרים ברשימה" value={stats.people} detail={stats.inMemoriam ? `${stats.inMemoriam} ז״ל` : undefined} color="bg-sun" />
-        <StatTile label="לקחו בעלות על פרופיל" value={stats.claimed} detail={`${pct(stats.claimed, stats.people)} מהרשימה`} />
-        <StatTile label="בחרו קוד אישי" value={stats.withPin} detail={`מתוך ${stats.claimed} בעלי פרופיל`} />
-        <StatTile label="העלו תמונה עדכנית" value={stats.withNowPhoto} />
-        <StatTile label="מגיעים" value={stats.attending.yes} detail={`אולי ${stats.attending.maybe}, לא ${stats.attending.no}`} color="bg-teal text-white" />
-        <StatTile label="פנים שזוהו" value={`${stats.facesNamed}/${stats.faces}`} detail={`${pct(stats.facesNamed, stats.faces)} מהפנים בתמונות`} />
+        <StatTile label="בוגרים ברשימה" value={stats.people} detail={stats.inMemoriam ? `${stats.inMemoriam} ז״ל` : undefined} color="bg-sun" onClick={() => onTab('people')} />
+        <StatTile label="לקחו בעלות על פרופיל" value={stats.claimed} detail={`${pct(stats.claimed, stats.people)} מהרשימה`} {...toggle('claimed')} />
+        <StatTile label="בחרו קוד אישי" value={stats.withPin} detail={`מתוך ${stats.claimed} בעלי פרופיל`} {...toggle('pin')} />
+        <StatTile label="העלו תמונה עדכנית" value={stats.withNowPhoto} {...toggle('photo')} />
+        <StatTile label="מגיעים" value={stats.attending.yes} detail={`אולי ${stats.attending.maybe}, לא ${stats.attending.no}`} color="bg-teal text-white" {...toggle('attending')} />
+        <StatTile label="פנים שזוהו" value={`${stats.facesNamed}/${stats.faces}`} detail={`${pct(stats.facesNamed, stats.faces)} מהפנים בתמונות`} {...toggle('faces')} />
         <StatTile label="פתקים שנשלחו" value={stats.notes} detail={`${stats.notesUnread} עוד לא נפתחו`} />
-        <StatTile label="משוב" value={stats.feedback} />
-        <StatTile label="סרטונים" value={stats.videos} />
+        <StatTile label="משוב" value={stats.feedback} onClick={() => document.getElementById('feedback')?.scrollIntoView({ behavior: 'smooth' })} />
+        <StatTile label="סרטונים" value={stats.videos} to="/videos" />
         <StatTile label="קלטות" value={stats.tapes} />
-        <StatTile label="ציטוטים" value={stats.quotes} detail={`${stats.quoteComments} תגובות`} />
+        <StatTile label="ציטוטים" value={stats.quotes} detail={`${stats.quoteComments} תגובות`} to="/quotes" />
         <StatTile label="כניסות לאתר" value={stats.visits} detail="מספר ההתחברויות עם סיסמה" />
       </div>
+
+      {list && (
+        <div className="space-y-4 rounded-xl border-[3px] border-ink p-4">
+          {list === 'attending' && (
+            <>
+              <NameList title="מגיעים" people={people.filter((p) => p.attending === 'yes')} />
+              <NameList title="אולי" people={people.filter((p) => p.attending === 'maybe')} />
+              <NameList title="לא יכולים להגיע" people={people.filter((p) => p.attending === 'no')} />
+            </>
+          )}
+          {list === 'claimed' && <NameList title="לקחו בעלות על פרופיל" people={owners} />}
+          {list === 'pin' && (
+            <>
+              <NameList title="בחרו קוד אישי" people={owners.filter((p) => p.hasPin)} />
+              <NameList title="בעלי פרופיל בלי קוד (יתקשו להיכנס ממכשיר אחר)" people={owners.filter((p) => !p.hasPin)} />
+            </>
+          )}
+          {list === 'photo' && <NameList title="העלו תמונה עדכנית" people={people.filter((p) => p.nowPhoto)} />}
+          {list === 'faces' && <UnnamedFaces />}
+        </div>
+      )}
     </Section>
   )
 }
@@ -255,7 +368,7 @@ export default function Admin() {
 
       {tab === 'overview' && (
         <>
-          <Overview />
+          <Overview onTab={setTab} />
           <Backup />
           <FeedbackInbox />
         </>
