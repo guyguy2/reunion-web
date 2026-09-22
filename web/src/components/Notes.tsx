@@ -95,7 +95,7 @@ export function NoteComposer({ to, onClose }: { to: Person; onClose: () => void 
                 .
               </p>
             )}
-            {anonymous && <p className="text-sm opacity-70">פתק אנונימי לא שומר מי שלח אותו, גם לא אצל המנהלים.</p>}
+            {anonymous && <p className="text-sm opacity-70">פתק אנונימי לא שומר מי שלח אותו, גם לא אצל המנהלים, ולכן אי אפשר לענות עליו.</p>}
             {!to.claimed && <p className="text-sm opacity-70">{to.name} עוד לא הצטרפו לאתר. הפתק יחכה להם עד שיצטרפו.</p>}
             {error && <p className="font-bold text-pink">{error}</p>}
             <div className="flex gap-2">
@@ -114,8 +114,20 @@ export function NoteComposer({ to, onClose }: { to: Person; onClose: () => void 
   )
 }
 
-/** A note in your inbox: folded until you open it, then the full page with a way to throw it away. */
-export function NoteCard({ note, index, onOpen, onThrowAway }: { note: Note; index: number; onOpen: () => void; onThrowAway: () => void }) {
+/** A note in your inbox: folded until you open it, then the full page with a way to reply (signed notes only) or throw it away. */
+export function NoteCard({
+  note,
+  index,
+  onOpen,
+  onThrowAway,
+  onReply,
+}: {
+  note: Note
+  index: number
+  onOpen: () => void
+  onThrowAway: () => void
+  onReply?: () => void
+}) {
   const [confirm, setConfirm] = useState(false)
   const tilt = index % 2 ? 1.2 : -1.2
   const from = note.from?.name ?? 'מישהו מהמחזור'
@@ -145,6 +157,11 @@ export function NoteCard({ note, index, onOpen, onThrowAway }: { note: Note; ind
       </NotePaper>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
         <span className="flex-1 opacity-70">{noteDate(note.createdAt)}</span>
+        {onReply && !confirm && (
+          <button className="btn btn-sm" onClick={onReply}>
+            לענות
+          </button>
+        )}
         {confirm ? (
           <>
             <button className="btn btn-pink btn-sm" onClick={onThrowAway}>
@@ -166,8 +183,9 @@ export function NoteCard({ note, index, onOpen, onThrowAway }: { note: Note; ind
 
 /** Your notes, newest first. Opening one marks it read, which also clears the badge on the tab. */
 export function NotesInbox() {
-  const { setUnreadNotes } = useStore()
+  const { setUnreadNotes, personById } = useStore()
   const [notes, setNotes] = useState<Note[] | null>(null)
+  const [replyTo, setReplyTo] = useState<Person | null>(null)
 
   const load = async () => {
     const next = await api<Note[]>('/api/me/notes')
@@ -189,15 +207,21 @@ export function NotesInbox() {
   return (
     <div className="chunk space-y-5 p-5">
       <h2 className="font-display text-xl">פתקים שקיבלתם</h2>
-      {notes.map((note, i) => (
-        <NoteCard
-          key={note.id}
-          note={note}
-          index={i}
-          onOpen={() => act(api(`/api/me/notes/${note.id}/read`, { method: 'POST' }))}
-          onThrowAway={() => act(api(`/api/me/notes/${note.id}`, { method: 'DELETE' }))}
-        />
-      ))}
+      {notes.map((note, i) => {
+        // Anonymous notes have no sender to answer, and a sender whose profile is gone can't be reached either.
+        const sender = personById(note.from?.id)
+        return (
+          <NoteCard
+            key={note.id}
+            note={note}
+            index={i}
+            onOpen={() => act(api(`/api/me/notes/${note.id}/read`, { method: 'POST' }))}
+            onThrowAway={() => act(api(`/api/me/notes/${note.id}`, { method: 'DELETE' }))}
+            onReply={sender && !sender.inMemoriam ? () => setReplyTo(sender) : undefined}
+          />
+        )
+      })}
+      {replyTo && <NoteComposer to={replyTo} onClose={() => setReplyTo(null)} />}
     </div>
   )
 }
