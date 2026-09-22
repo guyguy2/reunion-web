@@ -255,6 +255,9 @@ export function adminRoutes(config: Config, db: Db) {
     return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
   })
 
+  // ---- Which build is live. Empty when running locally. ----
+  admin.get('/version', (c) => c.json({ version: config.version ?? null }))
+
   // ---- Overview: counts only. Notes are private, so only how many, never what or from whom. ----
   admin.get('/stats', (c) => {
     const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n

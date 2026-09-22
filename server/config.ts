@@ -14,6 +14,8 @@ export interface Config {
   emailFrom?: string
   /** The site's public address, for links in emails. Falls back to the address of the request. */
   publicUrl?: string
+  /** Deploy time and commit, set by `pnpm release`. Shown in the principal's office. */
+  version?: string
 }
 
 function required(name: string): string {
@@ -35,5 +37,6 @@ export function loadConfig(): Config {
     feedbackTo: process.env.FEEDBACK_TO,
     emailFrom: process.env.EMAIL_FROM ?? 'Reunion site <onboarding@resend.dev>',
     publicUrl: process.env.PUBLIC_URL ?? (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined),
+    version: process.env.APP_VERSION,
   }
 }

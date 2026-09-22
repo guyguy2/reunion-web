@@ -89,6 +89,7 @@ Real class photos are uploaded through the admin page and stored in `DATA_DIR`. 
 | `EMAIL_FROM` | Sender address. Resend's default test sender only delivers to your own Resend account, so classmates need a verified domain |
 | `FEEDBACK_TO` | Where feedback messages are emailed |
 | `PUBLIC_URL` | The site's address, for links in emails. Defaults to the Railway domain, then to the request's address |
+| `APP_VERSION` | Set by `pnpm release`: the deploy time and commit, shown in the principal's office |
 
 Event details, schedule, the house mixtape and the organizers' video list come from `EVENT_JSON`. They stay out of git so the repo doesn't publish the date, venue or schedule; `content/event.json` holds placeholder values that show the expected shape. In a local `.env`, wrap the JSON in single quotes and it can span several lines.
 
@@ -103,6 +104,8 @@ railway variable set CLASS_PASSCODE=... ADMIN_PASSCODE=... SESSION_SECRET=... GO
 railway up
 railway domain
 ```
+
+After that, deploy with `pnpm release`. It stamps `APP_VERSION` with the time and commit (plus `-dirty` when there are uncommitted changes), then runs `railway up`. Pushing to GitHub does not deploy.
 
 ## License
 

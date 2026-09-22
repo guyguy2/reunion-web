@@ -63,6 +63,21 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
+/** Which build is live: deploy time and commit, from `pnpm release`. */
+function Version() {
+  const [version, setVersion] = useState<string | null>(null)
+
+  useEffect(() => {
+    api<{ version: string | null }>('/api/admin/version').then((v) => setVersion(v.version ?? 'גרסה מקומית'))
+  }, [])
+
+  return (
+    <p className="font-mono text-xs opacity-60" dir="ltr">
+      {version}
+    </p>
+  )
+}
+
 /** Everything sent through the feedback button, newest first. Also emailed when email is set up. */
 function FeedbackInbox() {
   const [messages, setMessages] = useState<FeedbackMessage[] | null>(null)
@@ -220,7 +235,10 @@ export default function Admin() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-4 pb-28 sm:p-8 sm:pb-28">
-      <h1 className="heading">חדר המנהל</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="heading">חדר המנהל</h1>
+        <Version />
+      </div>
       {notice && (
         <p role="status" className="rounded-lg border-[3px] border-ink bg-sun p-3 font-bold">
           {notice}
