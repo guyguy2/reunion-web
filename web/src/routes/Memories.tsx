@@ -11,11 +11,32 @@ interface AlbumPhoto {
 
 const TILTS = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2', 'rotate-0']
 
+/** Same breakpoints as Tailwind's sm and lg: 2, 3 or 4 columns. */
+function useColumnCount(): number {
+  const count = () => (window.matchMedia('(min-width: 1024px)').matches ? 4 : window.matchMedia('(min-width: 640px)').matches ? 3 : 2)
+  const [columns, setColumns] = useState(count)
+  useEffect(() => {
+    const queries = ['(min-width: 640px)', '(min-width: 1024px)'].map((q) => window.matchMedia(q))
+    const update = () => setColumns(count())
+    queries.forEach((q) => q.addEventListener('change', update))
+    return () => queries.forEach((q) => q.removeEventListener('change', update))
+  }, [])
+  return columns
+}
+
+/** Deals photos across the columns like cards, so the newest ones fill the top row instead of the first column. */
+export function dealIntoColumns<T>(items: T[], columns: number): { item: T; index: number }[][] {
+  const dealt: { item: T; index: number }[][] = Array.from({ length: columns }, () => [])
+  items.forEach((item, index) => dealt[index % columns].push({ item, index }))
+  return dealt
+}
+
 export default function Memories() {
   const { event } = useStore()
   const memories = event?.memories
   const [photos, setPhotos] = useState<AlbumPhoto[] | null>(null)
   const [open, setOpen] = useState<number | null>(null)
+  const columns = useColumnCount()
 
   useEffect(() => {
     api<AlbumPhoto[]>('/api/memories/photos')
@@ -69,25 +90,29 @@ export default function Memories() {
       {photos === null && <p className="pixel text-center text-2xl">מפתחים תמונות...</p>}
 
       {photos && photos.length > 0 && (
-        <div className="columns-2 gap-4 sm:columns-3 lg:columns-4">
-          {photos.map((photo, i) => (
-            <button
-              key={photo.src}
-              onClick={() => setOpen(i)}
-              className={`polaroid mb-4 block w-full cursor-zoom-in break-inside-avoid pb-3 transition-transform hover:z-10 hover:scale-[1.03] hover:rotate-0 ${TILTS[i % TILTS.length]}`}
-              aria-label={`פתיחת תמונה ${i + 1}`}
-            >
-              {/* no-referrer keeps the site address out of requests to Google's image servers. */}
-              <img
-                src={`${photo.src}=w480`}
-                width={photo.width}
-                height={photo.height}
-                alt=""
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                className="h-auto w-full bg-paper"
-              />
-            </button>
+        <div className="flex items-start gap-4">
+          {dealIntoColumns(photos, columns).map((column, c) => (
+            <div key={c} className="min-w-0 flex-1">
+              {column.map(({ item: photo, index: i }) => (
+                <button
+                  key={photo.src}
+                  onClick={() => setOpen(i)}
+                  className={`polaroid mb-4 block w-full cursor-zoom-in pb-3 transition-transform hover:relative hover:z-10 hover:scale-[1.03] hover:rotate-0 ${TILTS[i % TILTS.length]}`}
+                  aria-label={`פתיחת תמונה ${i + 1}`}
+                >
+                  {/* no-referrer keeps the site address out of requests to Google's image servers. */}
+                  <img
+                    src={`${photo.src}=w480`}
+                    width={photo.width}
+                    height={photo.height}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="h-auto w-full bg-paper"
+                  />
+                </button>
+              ))}
+            </div>
           ))}
         </div>
       )}
