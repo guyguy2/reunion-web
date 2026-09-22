@@ -105,7 +105,7 @@ railway up
 railway domain
 ```
 
-After that, deploy with `pnpm release`. It stamps `APP_VERSION` with the time and commit (plus `-dirty` when there are uncommitted changes), then runs `railway up`. Pushing to GitHub does not deploy.
+After that, deploy with `pnpm release`. It stamps `APP_VERSION` with the time and commit, then runs `railway up`. Pushing to GitHub does not deploy.
 
 ## License
 

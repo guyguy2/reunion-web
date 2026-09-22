@@ -14,7 +14,7 @@
     "start": "node dist/server/index.js",
     "seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
     "roster:import": "tsx --env-file-if-exists=.env scripts/import-roster.ts",
-    "release": "railway variables --set \"APP_VERSION=$(date '+%Y-%m-%d %H:%M') $(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty)\" --skip-deploys && railway up --detach",
+    "release": "railway variables --set \"APP_VERSION=$(date '+%Y-%m-%d %H:%M') $(git rev-parse --short HEAD)\" --skip-deploys && railway up --detach",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
