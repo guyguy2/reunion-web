@@ -113,13 +113,16 @@ export function listVideos(db: Db, featured: FeaturedVideo[] = []) {
   return [...pinned.map((v, i) => ({ id: i ? -i : 0, ...v })), ...rows.map(serializeVideo)]
 }
 
-/** Videos from the shared Google Photos album. They live in the album, so they can't be removed here (negative ids). */
-export function albumVideoEntries(videos: AlbumPhoto[], albumUrl: string) {
+/**
+ * Videos from the shared Google Photos album. They live in the album, so they can't be removed here (negative ids).
+ * `titles` comes from the event config (memories.videoTitles), keyed by the album item id.
+ */
+export function albumVideoEntries(videos: AlbumPhoto[], albumUrl: string, titles: Record<string, string> = {}) {
   return videos.map((v, i) => ({
     id: -1000 - i,
     provider: 'gphotos' as const,
     externalId: v.src.split('/pw/')[1],
-    title: 'סרטון מהאלבום המשותף',
+    title: (v.itemId && titles[v.itemId]) || 'סרטון מהאלבום המשותף',
     note: v.durationMs ? `אורך: ${formatDuration(v.durationMs)}` : null,
     addedBy: null,
     url: albumUrl,

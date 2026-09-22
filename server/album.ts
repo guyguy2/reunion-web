@@ -6,8 +6,10 @@ export interface AlbumPhoto {
   src: string
   width: number
   height: number
-  /** Only set on videos. `src` is then the poster frame, and `src=m18` / `src=m22` stream it as mp4. */
+  /** Only set on videos. `src` is then the poster frame, and `src=m18` streams it as 360p mp4. */
   durationMs?: number
+  /** Only set on videos: the album item's id ("AF1Qip..."), which stays put, so the event config can name the video. */
+  itemId?: string
 }
 
 const CACHE_MS = 30 * 60 * 1000
@@ -37,9 +39,13 @@ export function parseAlbumPage(html: string): AlbumPhoto[] {
   for (const [, ms, src] of html.matchAll(/"76647426":\[(\d+),[^[\]]*\["(https:\/\/lh3\.googleusercontent\.com\/pw\/[A-Za-z0-9_-]+)"\]\]/g)) {
     durations.set(src, Number(ms))
   }
+  const itemIds = new Map<string, string>()
+  for (const [, id, src] of html.matchAll(/\["(AF1Qip[A-Za-z0-9_-]+)",\["(https:\/\/lh3\.googleusercontent\.com\/pw\/[A-Za-z0-9_-]+)"/g)) itemIds.set(src, id)
   return photos.slice(0, MAX_PHOTOS).map(({ added: _added, ...photo }) => {
     const durationMs = durations.get(photo.src)
-    return durationMs === undefined ? photo : { ...photo, durationMs }
+    if (durationMs === undefined) return photo
+    const itemId = itemIds.get(photo.src)
+    return itemId ? { ...photo, durationMs, itemId } : { ...photo, durationMs }
   })
 }
 
