@@ -40,6 +40,18 @@ beforeAll(async () => {
 
 afterAll(() => fs.rmSync(dataDir, { recursive: true, force: true }))
 
+describe('version', () => {
+  it('shows organizers which build is live', async () => {
+    const res = await createApp({ ...config, version: '2026-09-21 19:50 6756e05' }, db).request('/api/admin/version', { headers: { Cookie: admin } })
+    expect(await res.json()).toEqual({ version: '2026-09-21 19:50 6756e05' })
+  })
+
+  it('is empty when running locally, and for organizers only', async () => {
+    expect(await (await app.request('/api/admin/version', { headers: { Cookie: admin } })).json()).toEqual({ version: null })
+    expect((await app.request('/api/admin/version', { headers: { Cookie: member } })).status).toBe(403)
+  })
+})
+
 describe('admin overview', () => {
   it('is for organizers only', async () => {
     expect((await app.request('/api/admin/stats', { headers: { Cookie: member } })).status).toBe(403)
