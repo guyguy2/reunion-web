@@ -6,6 +6,7 @@ import ContactLinks from '../web/src/components/ContactLinks.tsx'
 import { daysLeft, rsvpShortcut } from '../web/src/components/Rsvp.tsx'
 import { NoteCard } from '../web/src/components/Notes.tsx'
 import { Credits } from '../web/src/routes/EventPage.tsx'
+import { dealIntoColumns } from '../web/src/routes/Memories.tsx'
 import { firstName, greeting } from '../web/src/components/Welcome.tsx'
 import { nameKey, possibleDuplicates } from '../web/src/roster.ts'
 import { buildShelf, canSkip, nextTape, pickTape, spotifyUri, tapeFinished } from '../web/src/tapes.ts'
@@ -68,6 +69,14 @@ describe('notes', () => {
     expect(withReply({ ...note, read: true })).toContain('לענות')
     expect(withReply(note)).not.toContain('לענות')
     expect(card({ ...note, read: true })).not.toContain('לענות')
+  })
+})
+
+describe('memories wall', () => {
+  it('deals photos across the columns so the first ones make up the top row', () => {
+    const columns = dealIntoColumns(['a', 'b', 'c', 'd', 'e'], 3)
+    expect(columns.map((c) => c.map((p) => p.item))).toEqual([['a', 'd'], ['b', 'e'], ['c']])
+    expect(columns[1][1].index).toBe(4)
   })
 })
 

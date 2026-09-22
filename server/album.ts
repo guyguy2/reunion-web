@@ -9,21 +9,28 @@ export interface AlbumPhoto {
 }
 
 const CACHE_MS = 30 * 60 * 1000
-const MAX_PHOTOS = 120
+const MAX_PHOTOS = 500
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
 
-/** Pulls ["https://lh3.googleusercontent.com/pw/...", width, height] entries out of the album page. */
+/**
+ * Pulls ["https://lh3.googleusercontent.com/pw/...", width, height] entries out of the album page, newest first.
+ * Each entry is followed by `]],<taken>,"<key>",<tz offset>,<added>`; when every photo has that date added we sort
+ * by it, otherwise we fall back to reversing the album's own order (oldest first by default).
+ */
 export function parseAlbumPage(html: string): AlbumPhoto[] {
   const seen = new Set<string>()
-  const photos: AlbumPhoto[] = []
-  for (const match of html.matchAll(/\["(https:\/\/lh3\.googleusercontent\.com\/pw\/[A-Za-z0-9_-]+)",(\d+),(\d+)/g)) {
-    const [, src, width, height] = match
+  const photos: (AlbumPhoto & { added: number })[] = []
+  const entry = /\["(https:\/\/lh3\.googleusercontent\.com\/pw\/[A-Za-z0-9_-]+)",(\d+),(\d+)(?:.{0,1000}?\]\],\d{10,},"[^"]*",-?\d+,(\d{10,}))?/g
+  for (const match of html.matchAll(entry)) {
+    const [, src, width, height, added] = match
     if (seen.has(src)) continue
     seen.add(src)
-    photos.push({ src, width: Number(width), height: Number(height) })
+    photos.push({ src, width: Number(width), height: Number(height), added: Number(added ?? 0) })
   }
-  return photos.slice(0, MAX_PHOTOS)
+  photos.reverse()
+  if (photos.every((p) => p.added)) photos.sort((a, b) => b.added - a.added)
+  return photos.slice(0, MAX_PHOTOS).map(({ added: _added, ...photo }) => photo)
 }
 
 let cache: { url: string; at: number; photos: AlbumPhoto[] } | null = null
