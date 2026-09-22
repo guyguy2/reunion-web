@@ -433,6 +433,57 @@ export default function Admin() {
 
       {tab === 'people' && (
         <Section title={`אנשים (${people.length})`}>
+          <div>
+            <label className="label" htmlFor="people-search">
+              חיפוש ברשימה
+            </label>
+            <input
+              id="people-search"
+              className="field"
+              type="search"
+              dir="auto"
+              placeholder="שם, כינוי או שם קודם"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          </div>
+          <ul className="max-h-96 divide-y-2 divide-ink/20 overflow-y-auto">
+            {shown.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center gap-2 py-2">
+                {editingId === p.id ? (
+                  <NameEditor
+                    person={p}
+                    onCancel={() => setEditingId(null)}
+                    onSave={(name) =>
+                      run('rename', async () => {
+                        await api(`/api/admin/people/${p.id}`, { method: 'PATCH', json: { name } })
+                        setEditingId(null)
+                        return `השם עודכן ל"${name}".`
+                      })
+                    }
+                  />
+                ) : (
+                  <>
+                    <span className="min-w-0 flex-1" dir="auto">
+                      <span className="font-bold">{p.name}</span>
+                      <span className="ms-2 text-sm opacity-70">
+                        {p.claimed ? 'בבעלות' : 'ללא בעלות'}
+                        {p.email ? `, ${p.email}` : ''}
+                      </span>
+                    </span>
+                    <button className="btn btn-plain btn-sm" onClick={() => setEditingId(p.id)}>
+                      עריכת השם
+                    </button>
+                    {p.claimed && (
+                      <ConfirmButton label="איפוס בעלות" confirmLabel="לאפס" onConfirm={() => run('reset', () => api(`/api/admin/people/${p.id}/reset-claim`, { method: 'POST' }).then(() => 'הבעלות אופסה. קישור העריכה הישן כבר לא עובד.'))} />
+                    )}
+                    <ConfirmButton label="מחיקה" confirmLabel="למחוק באמת" className="text-pink" onConfirm={() => run('delete', () => api(`/api/admin/people/${p.id}`, { method: 'DELETE' }).then(() => {}))} />
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+
           <form
             className="flex items-end gap-2"
             onSubmit={(e) => {
@@ -488,57 +539,6 @@ export default function Admin() {
               </button>
             </div>
           </details>
-
-          <div>
-            <label className="label" htmlFor="people-search">
-              חיפוש ברשימה
-            </label>
-            <input
-              id="people-search"
-              className="field"
-              type="search"
-              dir="auto"
-              placeholder="שם, כינוי או שם קודם"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            />
-          </div>
-          <ul className="max-h-96 divide-y-2 divide-ink/20 overflow-y-auto">
-            {shown.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center gap-2 py-2">
-                {editingId === p.id ? (
-                  <NameEditor
-                    person={p}
-                    onCancel={() => setEditingId(null)}
-                    onSave={(name) =>
-                      run('rename', async () => {
-                        await api(`/api/admin/people/${p.id}`, { method: 'PATCH', json: { name } })
-                        setEditingId(null)
-                        return `השם עודכן ל"${name}".`
-                      })
-                    }
-                  />
-                ) : (
-                  <>
-                    <span className="min-w-0 flex-1" dir="auto">
-                      <span className="font-bold">{p.name}</span>
-                      <span className="ms-2 text-sm opacity-70">
-                        {p.claimed ? 'בבעלות' : 'ללא בעלות'}
-                        {p.email ? `, ${p.email}` : ''}
-                      </span>
-                    </span>
-                    <button className="btn btn-plain btn-sm" onClick={() => setEditingId(p.id)}>
-                      עריכת השם
-                    </button>
-                    {p.claimed && (
-                      <ConfirmButton label="איפוס בעלות" confirmLabel="לאפס" onConfirm={() => run('reset', () => api(`/api/admin/people/${p.id}/reset-claim`, { method: 'POST' }).then(() => 'הבעלות אופסה. קישור העריכה הישן כבר לא עובד.'))} />
-                    )}
-                    <ConfirmButton label="מחיקה" confirmLabel="למחוק באמת" className="text-pink" onConfirm={() => run('delete', () => api(`/api/admin/people/${p.id}`, { method: 'DELETE' }).then(() => {}))} />
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
         </Section>
       )}
     </div>
