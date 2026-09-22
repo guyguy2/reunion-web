@@ -22,9 +22,9 @@ import { MAX_UPLOAD_BYTES, cropFace, readImageField } from './images.ts'
 import { addPhoto, deletePhoto, deletePhotos, getPerson, insertPerson, listPeople, listPhotos, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { getScene, listScenes, serializeTag } from './scenes.ts'
 import { adminRoutes } from './admin.ts'
-import { albumPhotos } from './album.ts'
+import { albumPhotos, albumVideos } from './album.ts'
 import { addTape, listTapes } from './tapes.ts'
-import { addVideo, listVideos } from './videos.ts'
+import { addVideo, albumVideoEntries, listVideos } from './videos.ts'
 import { addQuote, addQuoteComment, listQuotes, reactToQuote } from './quotes.ts'
 import { listCredits } from './credits.ts'
 import { addFeedback, resendSender } from './feedback.ts'
@@ -144,7 +144,11 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   })
 
   // The video library works the same way: classmates add links, organizers remove them.
-  app.get('/api/videos', (c) => c.json(listVideos(db, loadEvent().videos ?? [])))
+  // Videos in the shared Google Photos album show up here too, after the pasted links.
+  app.get('/api/videos', async (c) => {
+    const albumUrl = process.env.GOOGLE_PHOTOS_ALBUM_URL ?? ''
+    return c.json([...listVideos(db, loadEvent().videos ?? []), ...albumVideoEntries(await albumVideos(albumUrl), albumUrl)])
+  })
 
   app.post('/api/videos', async (c) => {
     try {

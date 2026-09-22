@@ -6,6 +6,8 @@ export interface AlbumPhoto {
   src: string
   width: number
   height: number
+  /** Only set on videos. `src` is then the poster frame, and `src=m18` / `src=m22` stream it as mp4. */
+  durationMs?: number
 }
 
 const CACHE_MS = 30 * 60 * 1000
@@ -30,12 +32,29 @@ export function parseAlbumPage(html: string): AlbumPhoto[] {
   }
   photos.reverse()
   if (photos.every((p) => p.added)) photos.sort((a, b) => b.added - a.added)
-  return photos.slice(0, MAX_PHOTOS).map(({ added: _added, ...photo }) => photo)
+  // A video's entry also carries "76647426":[<duration ms>, null, w, h, ..., ["<its url>"]].
+  const durations = new Map<string, number>()
+  for (const [, ms, src] of html.matchAll(/"76647426":\[(\d+),[^[\]]*\["(https:\/\/lh3\.googleusercontent\.com\/pw\/[A-Za-z0-9_-]+)"\]\]/g)) {
+    durations.set(src, Number(ms))
+  }
+  return photos.slice(0, MAX_PHOTOS).map(({ added: _added, ...photo }) => {
+    const durationMs = durations.get(photo.src)
+    return durationMs === undefined ? photo : { ...photo, durationMs }
+  })
 }
 
 let cache: { url: string; at: number; photos: AlbumPhoto[] } | null = null
 
+/** Photos only: the album's videos go to the video library instead (see albumVideos). */
 export async function albumPhotos(albumUrl: string): Promise<AlbumPhoto[]> {
+  return (await albumItems(albumUrl)).filter((p) => p.durationMs === undefined)
+}
+
+export async function albumVideos(albumUrl: string): Promise<AlbumPhoto[]> {
+  return (await albumItems(albumUrl)).filter((p) => p.durationMs !== undefined)
+}
+
+async function albumItems(albumUrl: string): Promise<AlbumPhoto[]> {
   if (!/^https:\/\/(photos\.google\.com|photos\.app\.goo\.gl)\//.test(albumUrl)) return []
   if (cache && cache.url === albumUrl && Date.now() - cache.at < CACHE_MS) return cache.photos
   try {

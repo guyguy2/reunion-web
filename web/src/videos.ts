@@ -5,6 +5,14 @@ export const PROVIDER_NAME: Record<Video['provider'], string> = {
   instagram: 'Instagram',
   facebook: 'Facebook',
   x: 'X',
+  gphotos: 'Google Photos',
+}
+
+const GPHOTOS = 'https://lh3.googleusercontent.com/pw/'
+
+/** Album videos play in our own player: 720p when Google made one, else the 360p copy every video has. */
+export function streamUrls(video: Pick<Video, 'externalId'>): string[] {
+  return ['m22', 'm18'].map((size) => `${GPHOTOS}${video.externalId}=${size}`)
 }
 
 /** The player to load on click. Built from the validated ID, never from the pasted link. */
@@ -22,8 +30,9 @@ export function embedUrl(video: Pick<Video, 'provider' | 'externalId' | 'url'>):
   }
 }
 
-/** Only YouTube has a thumbnail we can show without loading their player. */
+/** Only YouTube and album videos have a thumbnail we can show without loading a player. */
 export function thumbnailUrl(video: Pick<Video, 'provider' | 'externalId'>): string | null {
+  if (video.provider === 'gphotos') return `${GPHOTOS}${video.externalId}=w960`
   return video.provider === 'youtube' ? `https://i.ytimg.com/vi/${encodeURIComponent(video.externalId)}/hqdefault.jpg` : null
 }
 
