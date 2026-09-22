@@ -80,10 +80,13 @@ export interface Tape {
   url: string
 }
 
-/** A classmate's video link. The embed and the "open" link are rebuilt from `provider` and `externalId`. */
+/**
+ * A classmate's video link. The embed and the "open" link are rebuilt from `provider` and `externalId`.
+ * 'gphotos' is a video from the shared album: `externalId` is its Google image id and `url` the album.
+ */
 export interface Video {
   id: number
-  provider: 'youtube' | 'instagram' | 'facebook' | 'x'
+  provider: 'youtube' | 'instagram' | 'facebook' | 'x' | 'gphotos'
   externalId: string
   title: string
   note: string | null

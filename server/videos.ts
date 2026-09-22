@@ -1,3 +1,4 @@
+import type { AlbumPhoto } from './album.ts'
 import type { Db, VideoRow } from './db.ts'
 
 export type VideoProvider = 'youtube' | 'instagram' | 'facebook' | 'x'
@@ -110,6 +111,26 @@ export function listVideos(db: Db, featured: FeaturedVideo[] = []) {
   })
   const rows = db.prepare('SELECT * FROM videos ORDER BY id').all() as unknown as VideoRow[]
   return [...pinned.map((v, i) => ({ id: i ? -i : 0, ...v })), ...rows.map(serializeVideo)]
+}
+
+/** Videos from the shared Google Photos album. They live in the album, so they can't be removed here (negative ids). */
+export function albumVideoEntries(videos: AlbumPhoto[], albumUrl: string) {
+  return videos.map((v, i) => ({
+    id: -1000 - i,
+    provider: 'gphotos' as const,
+    externalId: v.src.split('/pw/')[1],
+    title: 'סרטון מהאלבום המשותף',
+    note: v.durationMs ? `אורך: ${formatDuration(v.durationMs)}` : null,
+    addedBy: null,
+    url: albumUrl,
+  }))
+}
+
+export function formatDuration(ms: number): string {
+  const total = Math.round(ms / 1000)
+  const [h, m, s] = [Math.floor(total / 3600), Math.floor((total % 3600) / 60), total % 60]
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
 }
 
 const FALLBACK_TITLE: Record<VideoProvider, string> = {

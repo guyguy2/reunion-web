@@ -10,7 +10,7 @@ import { dealIntoColumns } from '../web/src/routes/Memories.tsx'
 import { firstName, greeting } from '../web/src/components/Welcome.tsx'
 import { nameKey, possibleDuplicates } from '../web/src/roster.ts'
 import { buildShelf, canSkip, nextTape, pickTape, spotifyUri, tapeFinished } from '../web/src/tapes.ts'
-import { embedUrl, isTallEmbed, thumbnailUrl } from '../web/src/videos.ts'
+import { embedUrl, isTallEmbed, streamUrls, thumbnailUrl } from '../web/src/videos.ts'
 import { compareClass, filterOptions, filterPeople, isFiltering, NO_FILTERS, tilePhoto, unknownFaces, type Filters } from '../web/src/yearbook.ts'
 
 type Links = { email: string | null; instagram: string | null; linkedin: string | null; facebook?: string | null; website?: string | null; phone?: string | null; x?: string | null }
@@ -242,6 +242,8 @@ describe('video library', () => {
     )
     expect(thumbnailUrl({ provider: 'youtube', externalId: 'dQw4w9WgXcQ' })).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg')
     expect(thumbnailUrl({ provider: 'instagram', externalId: 'C1a2B3c4D5e' })).toBeNull()
+    expect(thumbnailUrl({ provider: 'gphotos', externalId: 'vid-1' })).toBe('https://lh3.googleusercontent.com/pw/vid-1=w960')
+    expect(streamUrls({ externalId: 'vid-1' })).toEqual(['https://lh3.googleusercontent.com/pw/vid-1=m22', 'https://lh3.googleusercontent.com/pw/vid-1=m18'])
     expect([isTallEmbed('instagram'), isTallEmbed('x'), isTallEmbed('youtube'), isTallEmbed('facebook')]).toEqual([true, true, false, false])
   })
 })

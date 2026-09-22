@@ -8,7 +8,7 @@ import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
 import { MAX_PHOTOS_PER_KIND, insertPerson, parsePersonInput } from '../server/people.ts'
 import { addTape, parseTapeLink } from '../server/tapes.ts'
-import { addVideo, listVideos, parseVideoLink } from '../server/videos.ts'
+import { addVideo, albumVideoEntries, formatDuration, listVideos, parseVideoLink } from '../server/videos.ts'
 import { addFeedback, resendSender, type SendEmail } from '../server/feedback.ts'
 import type { Mailer } from '../server/email.ts'
 
@@ -461,6 +461,15 @@ describe('video library', () => {
     expect(named.title).toBe('Graduation night')
     const insta = await addVideo(db, { url: 'https://www.instagram.com/reel/Cabcdefghij/' }, async () => null)
     expect(insta).toMatchObject({ title: 'סרטון מאינסטגרם', url: 'https://www.instagram.com/p/Cabcdefghij/' })
+  })
+
+  it('turns album videos into tapes that point back to the album and cannot be removed', () => {
+    const album = 'https://photos.google.com/share/abc?key=def'
+    const entries = albumVideoEntries([{ src: 'https://lh3.googleusercontent.com/pw/vid-1', width: 480, height: 360, durationMs: 7328577 }], album)
+    expect(entries).toEqual([
+      { id: -1000, provider: 'gphotos', externalId: 'vid-1', title: 'סרטון מהאלבום המשותף', note: 'אורך: 2:02:09', addedBy: null, url: album },
+    ])
+    expect([formatDuration(65_000), formatDuration(3_600_000)]).toEqual(['1:05', '1:00:00'])
   })
 
   it("lists the organizers' videos first, and skips ones it cannot play", () => {

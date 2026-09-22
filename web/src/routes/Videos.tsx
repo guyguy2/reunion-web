@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, type Video } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { mixtape } from '../components/Cassette.tsx'
-import { PROVIDER_NAME, embedUrl, isTallEmbed, thumbnailUrl } from '../videos.ts'
+import { PROVIDER_NAME, embedUrl, isTallEmbed, streamUrls, thumbnailUrl } from '../videos.ts'
 import { LAYER, useEscape } from '../useEscape.ts'
 
 const PROVIDER_COLOR: Record<Video['provider'], string> = {
@@ -10,6 +10,7 @@ const PROVIDER_COLOR: Record<Video['provider'], string> = {
   instagram: 'bg-grape',
   facebook: 'bg-sky',
   x: 'bg-ink',
+  gphotos: 'bg-teal',
 }
 
 /** Thumbnail first; the real player only loads on click, and the mixtape pauses so two soundtracks never fight. */
@@ -21,7 +22,14 @@ function Tape({ video, onRemove }: { video: Video; onRemove?: () => void }) {
   return (
     <article className="chunk overflow-hidden">
       <div className={`relative bg-ink ${tall ? 'h-[40rem]' : 'aspect-video'}`}>
-        {playing ? (
+        {playing && video.provider === 'gphotos' ? (
+          // A 404 on the 720p copy makes the browser fall through to the next source.
+          <video className="absolute inset-0 h-full w-full" controls autoPlay playsInline poster={thumb ?? undefined} title={video.title}>
+            {streamUrls(video).map((src) => (
+              <source key={src} src={src} type="video/mp4" />
+            ))}
+          </video>
+        ) : playing ? (
           <iframe
             className={`absolute inset-0 h-full w-full ${tall ? 'bg-white' : ''}`}
             src={embedUrl(video)}
@@ -37,7 +45,7 @@ function Tape({ video, onRemove }: { video: Video; onRemove?: () => void }) {
             onClick={() => (mixtape.pause(), setPlaying(true))}
             aria-label={`ניגון ${video.title}`}
           >
-            {thumb && <img src={thumb} alt="" className="h-full w-full object-cover opacity-90" loading="lazy" />}
+            {thumb && <img src={thumb} alt="" className="h-full w-full object-cover opacity-90" loading="lazy" referrerPolicy="no-referrer" />}
             <span className="pixel absolute start-3 top-2 text-2xl text-white drop-shadow" dir="ltr">
               {thumb ? 'PLAY' : PROVIDER_NAME[video.provider]}
             </span>

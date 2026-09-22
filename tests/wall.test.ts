@@ -55,6 +55,15 @@ describe('parseAlbumPage', () => {
     expect(parseAlbumPage(html).map((p) => p.src.split('/pw/')[1])).toEqual(['scan', 'new', 'old'])
   })
 
+  it('marks the videos in the album with their length', () => {
+    const video = `["AF1Qipvid",["https://lh3.googleusercontent.com/pw/vid",480,360,null,null,null,null,null,[7328577,null,480,360,null,4,null,null,null,0,null,null,null,["https://lh3.googleusercontent.com/pw/vid"]],[1]],1,"k",0,1790000000000,["x"],{"15":1,"76647426":[7328577,null,480,360,null,4,null,null,null,0,null,null,null,["https://lh3.googleusercontent.com/pw/vid"]]}]`
+    const photo = `["AF1Qippic",["https://lh3.googleusercontent.com/pw/pic",800,600,null,[1]],1,"k",0,1789000000000,["x"],{"15":1}]`
+    expect(parseAlbumPage(`[${photo},${video}]`)).toEqual([
+      { src: 'https://lh3.googleusercontent.com/pw/vid', width: 480, height: 360, durationMs: 7328577 },
+      { src: 'https://lh3.googleusercontent.com/pw/pic', width: 800, height: 600 },
+    ])
+  })
+
   it('keeps every photo of an album well past the old 120 limit', () => {
     const html = Array.from({ length: 200 }, (_, i) => `["https://lh3.googleusercontent.com/pw/p${i}",10,10]`).join(' ')
     expect(parseAlbumPage(html)).toHaveLength(200)
