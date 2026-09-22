@@ -1,4 +1,5 @@
 import { createElement, useState, type FormEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import 'img-comparison-slider'
 import { api, faceUrl, matchesPerson, type Person, type Scene, type Tag } from '../api.ts'
@@ -46,6 +47,18 @@ export function Drawer({ onClose, layout, children }: { onClose: () => void; lay
   )
 }
 
+/** A photo from the profile, as big as the screen allows. Tapping anywhere or Escape closes it. */
+export function Enlarged({ src, onClose }: { src: string; onClose: () => void }) {
+  useEscape(onClose, LAYER.dialog)
+  // On the body, so the profile window's scrolling box can't clip it. It fills the top half, and the profile stays in view below it.
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex cursor-zoom-out items-start justify-center bg-ink/60 p-4" role="dialog" aria-label="צפייה בתמונה" onClick={onClose}>
+      <img src={src} alt="" className="max-h-[50dvh] max-w-full border-[6px] border-white object-contain shadow-chunk-lg" />
+    </div>,
+    document.body,
+  )
+}
+
 /** Every appearance of this person on the class photos, oldest first. */
 export function appearances(scenes: Scene[], personId: number): { scene: Scene; tag: Tag }[] {
   return scenes
@@ -69,6 +82,7 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
   // Owners can take their name off a wrongly tagged face; organizers can do it for anyone.
   const canUntag = isMe || role === 'admin'
   const [untagging, setUntagging] = useState<number | null>(null)
+  const [enlarged, setEnlarged] = useState<string | null>(null)
 
   /** Puts the face back to unnamed, so anyone can name it again. */
   async function untag(tag: Tag) {
@@ -99,9 +113,9 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
     <Drawer onClose={onClose} layout={layout}>
       <div className="flex items-start gap-4 pe-10">
         {(person.nowPhoto ?? thenSrc) && (
-          <div className="polaroid w-28 shrink-0 -rotate-3 pb-2">
+          <button className="polaroid w-28 shrink-0 -rotate-3 cursor-zoom-in pb-2" onClick={() => setEnlarged((person.nowPhoto ?? thenSrc)!)} aria-label="הגדלת התמונה">
             <img src={(person.nowPhoto ?? thenSrc)!} alt="" className="aspect-[4/5] w-full object-cover" />
-          </div>
+          </button>
         )}
         <div className="min-w-0">
           <h2 className="font-display text-2xl leading-tight break-words" dir="auto">
@@ -164,9 +178,9 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
           <h3 className="label">עוד תמונות</h3>
           <div className="flex gap-3 overflow-x-auto pb-2">
             {extraPhotos.map((photo) => (
-              <div key={photo.id} className="polaroid w-24 shrink-0 pb-2">
+              <button key={photo.id} className="polaroid w-24 shrink-0 cursor-zoom-in pb-2" onClick={() => setEnlarged(photo.url)} aria-label="הגדלת התמונה">
                 <img src={photo.url} alt="" className="aspect-[4/5] w-full object-cover" loading="lazy" />
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -178,10 +192,10 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
           <div className="flex gap-3 overflow-x-auto pb-2">
             {faces.map(({ scene, tag }) => (
               <div key={tag.id} className="flex w-24 shrink-0 flex-col gap-1">
+                {/* With no class photo to jump to (phones), the face itself opens bigger. */}
                 <button
-                  onClick={onJump && (() => onJump(scene))}
-                  disabled={!onJump}
-                  className="polaroid w-full pb-1 text-center enabled:cursor-pointer enabled:hover:-translate-y-0.5"
+                  onClick={() => (onJump ? onJump(scene) : setEnlarged(faceUrl(tag)))}
+                  className={`polaroid w-full pb-1 text-center hover:-translate-y-0.5 ${onJump ? 'cursor-pointer' : 'cursor-zoom-in'}`}
                 >
                   <img src={faceUrl(tag)} alt="" className="aspect-square w-full object-cover" loading="lazy" />
                   <span className="marker block pt-1 text-xs leading-tight" dir="auto">
@@ -252,6 +266,7 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
         {error && <p className="font-bold text-pink">{error}</p>}
       </div>
       {writing && <NoteComposer to={person} onClose={() => setWriting(false)} />}
+      {enlarged && <Enlarged src={enlarged} onClose={() => setEnlarged(null)} />}
     </Drawer>
   )
 }
