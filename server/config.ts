@@ -8,10 +8,13 @@ export interface Config {
   port: number
   webDir: string
   secureCookies: boolean
-  /** Email goes through Resend when a key is set: feedback to FEEDBACK_TO, sign-in links to the profile's address. */
+  /** Email goes through Resend when a key is set, else through the Gmail relay when its URL and secret are:
+   * feedback to FEEDBACK_TO, sign-in links and note alerts to the profile's address. */
   resendApiKey?: string
   feedbackTo?: string
   emailFrom?: string
+  gmailRelayUrl?: string
+  gmailRelaySecret?: string
   /** The site's public address, for links in emails. Falls back to the address of the request. */
   publicUrl?: string
   /** Deploy time and commit, set by `pnpm release`. Shown in the principal's office. */
@@ -36,6 +39,8 @@ export function loadConfig(): Config {
     resendApiKey: process.env.RESEND_API_KEY,
     feedbackTo: process.env.FEEDBACK_TO,
     emailFrom: process.env.EMAIL_FROM ?? 'Reunion site <onboarding@resend.dev>',
+    gmailRelayUrl: process.env.GMAIL_RELAY_URL,
+    gmailRelaySecret: process.env.GMAIL_RELAY_SECRET,
     publicUrl: process.env.PUBLIC_URL ?? (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined),
     version: process.env.APP_VERSION,
   }

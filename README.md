@@ -49,7 +49,7 @@ Taken with the built-in demo data (generated cartoon classmates, not real people
 
 ## Stack
 
-Node 24, Hono, SQLite (`node:sqlite`) and sharp on the server. React 19, React Router, Vite and Tailwind v4 on the client, with OpenSeadragon, Annotorious and MediaPipe for the yearbook tools. Email goes through Resend's HTTP API. One process serves the API, the gated media and the built SPA. All state lives in `DATA_DIR` (database, image tiles, uploads), which is a volume in production. Tests use Vitest.
+Node 24, Hono, SQLite (`node:sqlite`) and sharp on the server. React 19, React Router, Vite and Tailwind v4 on the client, with OpenSeadragon, Annotorious and MediaPipe for the yearbook tools. Email goes through Resend's HTTP API, or through a Google Apps Script relay that sends from a Gmail account (no domain needed). One process serves the API, the gated media and the built SPA. All state lives in `DATA_DIR` (database, image tiles, uploads), which is a volume in production. Tests use Vitest.
 
 ```
 server/        Hono app, routes and data access (one file per area: people, scenes, tapes, videos, quotes, notes, ...)
@@ -88,6 +88,8 @@ Real class photos are uploaded through the admin page and stored in `DATA_DIR`. 
 | `RESEND_API_KEY` | Optional. Turns on email (sign-in links, note alerts and feedback) |
 | `EMAIL_FROM` | Sender address. Resend's default test sender only delivers to your own Resend account, so classmates need a verified domain |
 | `FEEDBACK_TO` | Where feedback messages are emailed |
+| `GMAIL_RELAY_URL` | Without Resend: the web app URL of `scripts/gmail-relay.gs` deployed in the Gmail account to send from (setup steps are in the file). Railway blocks SMTP on its cheaper plans; this goes over HTTPS |
+| `GMAIL_RELAY_SECRET` | A long random string, the same as `SECRET` in the deployed script |
 | `PUBLIC_URL` | The site's address, for links in emails. Defaults to the Railway domain, then to the request's address |
 | `APP_VERSION` | Set by `pnpm release`: the deploy time and commit, shown in the principal's office |
 
