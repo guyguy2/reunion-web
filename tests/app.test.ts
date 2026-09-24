@@ -9,8 +9,8 @@ import { openDb } from '../server/db.ts'
 import { MAX_PHOTOS_PER_KIND, insertPerson, parsePersonInput } from '../server/people.ts'
 import { addTape, parseTapeLink } from '../server/tapes.ts'
 import { addVideo, albumVideoEntries, formatDuration, listVideos, parseVideoLink } from '../server/videos.ts'
-import { addFeedback, resendSender, type SendEmail } from '../server/feedback.ts'
-import type { Mailer } from '../server/email.ts'
+import { addFeedback, feedbackSender, type SendEmail } from '../server/feedback.ts'
+import { configuredMailer, type Mailer } from '../server/email.ts'
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-test-'))
 const config: Config = {
@@ -615,14 +615,37 @@ describe('feedback', () => {
   })
 
   it('sends through Resend only when a key and recipient are configured', async () => {
-    expect(resendSender(config)).toBeNull()
+    expect(feedbackSender(config)).toBeNull()
     const calls: [string, RequestInit][] = []
     const fakeFetch = (async (url: string, init: RequestInit) => (calls.push([url, init]), new Response('{}'))) as unknown as typeof fetch
-    const send = resendSender({ ...config, resendApiKey: 'key', feedbackTo: 'me@example.com', emailFrom: 'Site <a@b.dev>' }, fakeFetch)!
+    const send = feedbackSender({ ...config, resendApiKey: 'key', feedbackTo: 'me@example.com', emailFrom: 'Site <a@b.dev>' }, fakeFetch)!
     await send({ subject: 'Hi', text: 'Body' })
     expect(calls[0][0]).toBe('https://api.resend.com/emails')
     expect(calls[0][1].headers).toMatchObject({ Authorization: 'Bearer key' })
     expect(JSON.parse(calls[0][1].body as string)).toEqual({ from: 'Site <a@b.dev>', to: ['me@example.com'], subject: 'Hi', text: 'Body' })
+  })
+})
+
+describe('Gmail relay', () => {
+  it('posts the message with the shared secret, counts it sent only when the script says so, and gives way to Resend', async () => {
+    const relay = { ...config, gmailRelayUrl: 'https://script.google.test/exec', gmailRelaySecret: 'shh' }
+    const calls: [string, RequestInit][] = []
+    let answer: unknown = { ok: true }
+    const fakeFetch = (async (url: string, init: RequestInit) => (calls.push([url, init]), Response.json(answer))) as unknown as typeof fetch
+    const message = { to: 'pal@example.com', subject: 'Hi', text: 'Body' }
+
+    expect(configuredMailer(config)).toBeNull()
+    const mail = configuredMailer(relay, fakeFetch)!
+    await mail(message)
+    expect(calls[0][0]).toBe('https://script.google.test/exec')
+    expect(JSON.parse(calls[0][1].body as string)).toEqual({ secret: 'shh', ...message })
+
+    // Apps Script answers 200 even when sending failed, so the body decides.
+    answer = { ok: false, error: 'forbidden' }
+    await expect(mail(message)).rejects.toThrow('forbidden')
+
+    await configuredMailer({ ...relay, resendApiKey: 'key' }, fakeFetch)!(message)
+    expect(calls[2][0]).toBe('https://api.resend.com/emails')
   })
 })
 

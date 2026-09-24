@@ -1,15 +1,15 @@
 import type { Config } from './config.ts'
 import type { Db, FeedbackRow } from './db.ts'
-import { resendMailer } from './email.ts'
+import { configuredMailer } from './email.ts'
 
 export type SendEmail = (message: { subject: string; text: string; replyTo?: string }) => Promise<void>
 
 const MAX_MESSAGE = 3000
 const EMAIL = /[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+/
 
-/** Emails feedback to the organizers. Returns null when no API key or recipient is set; feedback is then only saved. */
-export function resendSender(config: Config, fetchImpl: typeof fetch = fetch): SendEmail | null {
-  const mail = resendMailer(config, fetchImpl)
+/** Emails feedback to the organizers. Returns null when email or a recipient is not set up; feedback is then only saved. */
+export function feedbackSender(config: Config, fetchImpl: typeof fetch = fetch): SendEmail | null {
+  const mail = configuredMailer(config, fetchImpl)
   const to = config.feedbackTo
   if (!mail || !to) return null
   return (message) => mail({ ...message, to })

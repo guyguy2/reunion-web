@@ -27,8 +27,8 @@ import { addTape, listTapes } from './tapes.ts'
 import { addVideo, albumVideoEntries, listVideos } from './videos.ts'
 import { addQuote, addQuoteComment, listQuotes, reactToQuote } from './quotes.ts'
 import { listCredits } from './credits.ts'
-import { addFeedback, resendSender } from './feedback.ts'
-import { resendMailer, type Mailer } from './email.ts'
+import { addFeedback, feedbackSender } from './feedback.ts'
+import { configuredMailer, type Mailer } from './email.ts'
 import { redeemSignInLink, sendSignInLink } from './recovery.ts'
 import { deleteNote, emailNoteAlert, listNotes, markNoteRead, sendNote, unreadNotes } from './notes.ts'
 
@@ -67,7 +67,7 @@ function loadEvent() {
   return event
 }
 
-export function createApp(config: Config, db: Db = openDb(config.dataDir), mailer: Mailer | null = resendMailer(config)) {
+export function createApp(config: Config, db: Db = openDb(config.dataDir), mailer: Mailer | null = configuredMailer(config)) {
   const app = new Hono<AppEnv>()
   const limiter = createLoginLimiter()
 
@@ -195,7 +195,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   })
 
   // Feedback to the organizers: saved, then emailed when email is configured.
-  const sendFeedback = resendSender(config)
+  const sendFeedback = feedbackSender(config)
   app.post('/api/feedback', async (c) => {
     try {
       return c.json(await addFeedback(db, await c.req.json().catch(() => null), sendFeedback), 201)
