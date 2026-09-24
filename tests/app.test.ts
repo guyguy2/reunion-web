@@ -659,6 +659,45 @@ describe('notes', () => {
     expect((await app.request(`/api/me/notes/${anon.id}`, { method: 'DELETE', headers: asRecipient })).status).toBe(200)
     expect(await (await app.request('/api/me/notes', { headers: asRecipient })).json()).toMatchObject([{ id: signed.id, read: true }])
   })
+
+  it('emails the recipient that a note is waiting, without who wrote it or what it says, at most once per cooldown', async () => {
+    const outbox: Parameters<Mailer>[0][] = []
+    let emailDown = false
+    const mailApp = createApp({ ...config, publicUrl: 'https://reunion.test' }, db, async (m) => {
+      if (emailDown) throw new Error('down')
+      outbox.push(m)
+    })
+    const created = await mailApp.request('/api/people', json('POST', { name: 'Letter Writer' }, { Cookie: member }))
+    const asWriter = { Cookie: member, 'x-edit-token': (await created.json()).token }
+    const penPal = insertPerson(db, { name: 'Pen Pal', email: 'penpal@example.com' })
+    const noEmail = insertPerson(db, { name: 'Offline Friend' })
+    const pass = (to: number, message: string, headers: Record<string, string> = asWriter, anonymous = false) =>
+      mailApp.request('/api/notes', json('POST', { to, message, anonymous }, headers))
+
+    expect((await pass(penPal, 'Remember the trip to the lake?')).status).toBe(201)
+    expect(outbox).toHaveLength(1)
+    expect(outbox[0]).toMatchObject({ to: 'penpal@example.com', text: expect.stringContaining('Pen Pal') })
+    expect(outbox[0].text).toContain('https://reunion.test/me')
+    expect(JSON.stringify(outbox[0])).not.toMatch(/lake|Letter Writer/)
+
+    // More notes right after, signed or anonymous, wait out the cooldown instead of sending more email.
+    await pass(penPal, 'One more thing')
+    await pass(penPal, 'Guess who', { Cookie: member }, true)
+    expect(outbox).toHaveLength(1)
+
+    // No address on the profile, no email.
+    expect((await pass(noEmail, 'Hello')).status).toBe(201)
+    expect(outbox).toHaveLength(1)
+
+    // After the cooldown the next note emails again. A failed email still delivers the note, and the next note retries.
+    db.prepare("UPDATE note_alerts SET sent_at = datetime('now', '-1 day') WHERE person_id = ?").run(penPal)
+    emailDown = true
+    expect((await pass(penPal, 'Sent while email was down')).status).toBe(201)
+    emailDown = false
+    await pass(penPal, 'And again')
+    expect(outbox.map((m) => m.to)).toEqual(['penpal@example.com', 'penpal@example.com'])
+    expect(db.prepare('SELECT COUNT(*) AS n FROM notes WHERE recipient_id = ?').get(penPal)).toEqual({ n: 5 })
+  })
 })
 
 describe('personal code sign-in', () => {

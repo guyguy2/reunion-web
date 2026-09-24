@@ -30,7 +30,7 @@ import { listCredits } from './credits.ts'
 import { addFeedback, resendSender } from './feedback.ts'
 import { resendMailer, type Mailer } from './email.ts'
 import { redeemSignInLink, sendSignInLink } from './recovery.ts'
-import { deleteNote, listNotes, markNoteRead, sendNote, unreadNotes } from './notes.ts'
+import { deleteNote, emailNoteAlert, listNotes, markNoteRead, sendNote, unreadNotes } from './notes.ts'
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -326,14 +326,17 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     return c.json({ ...serializePerson(me, 'full'), unreadNotes: unreadNotes(db, me.id) })
   })
 
-  // Notes: passed privately to one classmate. Only the recipient can read or throw them away.
+  // Notes: passed privately to one classmate, who gets an email that one is waiting.
+  // Only the recipient can read or throw them away.
   app.post('/api/notes', async (c) => {
+    let recipient
     try {
-      sendNote(db, await c.req.json().catch(() => null), owner(c))
-      return c.json({ ok: true }, 201)
+      recipient = sendNote(db, await c.req.json().catch(() => null), owner(c))
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
+    await emailNoteAlert(db, recipient, mailer, config.publicUrl ?? new URL(c.req.url).origin)
+    return c.json({ ok: true }, 201)
   })
 
   app.get('/api/me/notes', (c) => {

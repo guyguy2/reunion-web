@@ -1,7 +1,10 @@
 import type { Db, NoteRow, PersonRow } from './db.ts'
+import type { Mailer } from './email.ts'
 import { getPerson } from './people.ts'
 
 const MAX_MESSAGE = 1000
+/** At most one "you got a note" email per person in this many hours, so a burst of notes (anonymous ones included) can't flood an inbox. */
+const ALERT_HOURS = 12
 
 /** Anonymous notes store no sender at all, so nobody (admins included) can find out who wrote them. */
 export function serializeNote(row: NoteRow) {
@@ -34,6 +37,44 @@ export function sendNote(db: Db, body: unknown, sender: PersonRow | undefined) {
     from?.name ?? null,
     message,
   )
+  return recipient
+}
+
+/** Never says who wrote the note or what it says: that stays on the site, behind the recipient's sign-in. */
+export function noteAlertEmail(name: string, baseUrl: string) {
+  return {
+    subject: 'מישהו מהמחזור העביר לך פתק',
+    text: [
+      `שלום ${name},`,
+      '',
+      'מישהו מהמחזור העביר לך פתק באתר.',
+      'את הפתק אפשר לקרוא רק באתר, בפרופיל שלך:',
+      `${baseUrl}/me`,
+      '',
+      'אם זו הפעם הראשונה שלך באתר, בדף הזה מוסבר איך למצוא את עצמך בספר המחזור ולקחת את הפרופיל.',
+    ].join('\n'),
+  }
+}
+
+/** Tells the recipient a note is waiting, when email is set up and there is an address on the profile.
+ * The note is already saved, so a failed email is only logged. */
+export async function emailNoteAlert(db: Db, recipient: PersonRow, mail: Mailer | null, baseUrl: string) {
+  if (!mail || !recipient.email) return
+  // Takes the slot in one statement, so two notes arriving together send one email.
+  const due = db
+    .prepare(
+      `INSERT INTO note_alerts (person_id, sent_at) VALUES (?, datetime('now'))
+       ON CONFLICT(person_id) DO UPDATE SET sent_at = excluded.sent_at WHERE note_alerts.sent_at <= datetime('now', ?)`,
+    )
+    .run(recipient.id, `-${ALERT_HOURS} hours`).changes > 0
+  if (!due) return
+  try {
+    await mail({ to: recipient.email, ...noteAlertEmail(recipient.name, baseUrl) })
+  } catch (err) {
+    // Gives the slot back, so the next note tries again.
+    db.prepare('DELETE FROM note_alerts WHERE person_id = ?').run(recipient.id)
+    console.error(`Note alert for person ${recipient.id} was not emailed: ${(err as Error).message}`)
+  }
 }
 
 export function listNotes(db: Db, recipientId: number) {
