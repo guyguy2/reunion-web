@@ -10,7 +10,7 @@ import { MAX_PHOTOS_PER_KIND, insertPerson, parsePersonInput } from '../server/p
 import { addTape, parseTapeLink } from '../server/tapes.ts'
 import { addVideo, albumVideoEntries, formatDuration, listVideos, parseVideoLink } from '../server/videos.ts'
 import { addFeedback, feedbackSender, type SendEmail } from '../server/feedback.ts'
-import { configuredMailer, type Mailer } from '../server/email.ts'
+import { configuredMailer, gmailRelayMailer, type Mailer } from '../server/email.ts'
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-test-'))
 const config: Config = {
@@ -646,6 +646,43 @@ describe('Gmail relay', () => {
 
     await configuredMailer({ ...relay, resendApiKey: 'key' }, fakeFetch)!(message)
     expect(calls[2][0]).toBe('https://api.resend.com/emails')
+  })
+
+  it('follows Google redirects by hand, keeping the message, and never fails once the script has run', async () => {
+    const exec = 'https://script.google.com/macros/s/ID/exec'
+    const moved = 'https://script.google.com/macros/u/1/s/ID/exec'
+    const answer = 'https://script.googleusercontent.com/macros/echo?user_content_key=1'
+    const calls: { url: string; method: string; body?: string }[] = []
+    let routes: Record<string, () => Response> = {}
+    const fakeFetch = (async (url: string, init: RequestInit = {}) => {
+      calls.push({ url, method: init.method ?? 'GET', body: init.body as string | undefined })
+      return routes[url]()
+    }) as unknown as typeof fetch
+    const to = (url: string) => () => Response.redirect(url, 302)
+    const mail = gmailRelayMailer({ ...config, gmailRelayUrl: exec, gmailRelaySecret: 'shh' }, fakeFetch)!
+    const message = { to: 'pal@example.com', subject: 'Hi', text: 'Body' }
+
+    // Usually the script runs on the POST, and its answer waits at a one-time address.
+    routes = { [exec]: to(answer), [answer]: () => Response.json({ ok: true }) }
+    await mail(message)
+    expect(calls.map((c) => c.method)).toEqual(['POST', 'GET'])
+
+    // Sometimes Google moves the POST first: it goes out again there, message and all.
+    calls.length = 0
+    routes = { [exec]: to(moved), [moved]: to(answer), [answer]: () => Response.json({ ok: true }) }
+    await mail(message)
+    expect(calls.map((c) => [c.method, c.url])).toEqual([['POST', exec], ['POST', moved], ['GET', answer]])
+    expect(JSON.parse(calls[1].body!)).toEqual({ secret: 'shh', ...message })
+
+    // The script ran but its answer is gone: counted as sent, so a note alert does not go out twice.
+    routes = { [exec]: to(answer), [answer]: () => new Response('<html>Page Not Found</html>', { status: 404 }) }
+    await expect(mail(message)).resolves.toBeUndefined()
+
+    // The script refusing, or an error page instead of the script, is a failure.
+    routes = { [exec]: to(answer), [answer]: () => Response.json({ ok: false, error: 'forbidden' }) }
+    await expect(mail(message)).rejects.toThrow('forbidden')
+    routes = { [exec]: () => new Response('<html>Script function not found: doGet</html>') }
+    await expect(mail(message)).rejects.toThrow('Gmail relay answered 200')
   })
 })
 

@@ -29,15 +29,37 @@ export function gmailRelayMailer(config: Config, fetchImpl: typeof fetch = fetch
   const { gmailRelayUrl, gmailRelaySecret } = config
   if (!gmailRelayUrl || !gmailRelaySecret) return null
   return async ({ to, subject, text, replyTo }) => {
-    const res = await fetchImpl(gmailRelayUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret: gmailRelaySecret, to, subject, text, ...(replyTo ? { replyTo } : {}) }),
-    })
-    // Apps Script answers 200 even when the script fails, so the verdict is in the body.
-    const result = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
-    if (!res.ok || !result?.ok) throw new Error(`Gmail relay answered ${res.status}${result?.error ? `: ${result.error}` : ''}`)
+    const body = JSON.stringify({ secret: gmailRelaySecret, to, subject, text, ...(replyTo ? { replyTo } : {}) })
+    // Redirects are followed by hand: fetch would follow them as a GET and drop the message.
+    let url = gmailRelayUrl
+    for (let hop = 0; ; hop++) {
+      const res = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, redirect: 'manual' })
+      const location = res.headers.get('location')
+      if (res.status >= 300 && res.status < 400 && location) {
+        // Google points at the script's answer only after the script has run.
+        if (new URL(location).hostname === 'script.googleusercontent.com') return readRelayAnswer(fetchImpl, location)
+        if (hop >= 2) throw new Error('Gmail relay redirected too many times')
+        url = location
+        continue
+      }
+      // Apps Script answers 200 even when the script fails, so the verdict is in the body.
+      const result = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
+      if (!result?.ok) throw new Error(`Gmail relay answered ${res.status}${result?.error ? `: ${result.error}` : ''}`)
+      return
+    }
   }
+}
+
+/** The answer can be read only once, and now and then it is not there at all (a 404). The script has run by then,
+ * so an unreadable answer counts as sent: failing would send a note alert twice, or show an error for a sign-in link that arrived. */
+async function readRelayAnswer(fetchImpl: typeof fetch, answerUrl: string) {
+  const res = await fetchImpl(answerUrl).catch(() => null)
+  const result = res?.ok ? ((await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null) : null
+  if (!result) {
+    console.warn(`Gmail relay ran but its answer could not be read (${res?.status ?? 'no response'}); counting the email as sent`)
+    return
+  }
+  if (!result.ok) throw new Error(`Gmail relay: ${result.error ?? 'failed'}`)
 }
 
 /** Resend when it has a key, else the Gmail relay, else null (no email). */

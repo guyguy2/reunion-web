@@ -335,7 +335,10 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
-    await emailNoteAlert(db, recipient, mailer, config.publicUrl ?? new URL(c.req.url).origin)
+    // Not awaited: the note is already delivered, and the Gmail relay can take half a minute.
+    emailNoteAlert(db, recipient, mailer, config.publicUrl ?? new URL(c.req.url).origin).catch((err) =>
+      console.error(`Note alert for person ${recipient.id} failed: ${(err as Error).message}`),
+    )
     return c.json({ ok: true }, 201)
   })
 
