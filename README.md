@@ -32,7 +32,7 @@ Taken with the built-in demo data (generated cartoon classmates, not real people
 - **Crowd-sourced names.** Unnamed faces can be named by any classmate, either as an existing person or as a new, unclaimed profile. A profile owner can take their name off a wrongly tagged face ("That's not me"); organizers can do the same for anyone.
 - **Profiles.** Claim your face or add yourself if you are not on the roster. Fill in a nickname, city, bio, a favorite quote, contact links (email, phone, Instagram, LinkedIn, Facebook, X, website), then and now photos, and whether you are coming. "Remove my info" wipes everything except the name and releases the profile.
 - **Signing in.** Claiming returns a private edit link; only its hash is stored. A personal code (salted scrypt) signs you in on another phone or computer, and each device gets its own key. Forgot the code? A one-time sign-in link is emailed to the address on the profile (valid for 30 minutes). Wrong codes are rate limited per device and per profile.
-- **Notes.** Pass a private note to one classmate, signed or anonymous. Anonymous notes store no sender at all, so nobody (admins included) can tell who wrote them. Only the recipient can read or delete a note, and unread notes show as a badge on the profile button.
+- **Notes.** Pass a private note to one classmate, signed or anonymous. Anonymous notes store no sender at all, so nobody (admins included) can tell who wrote them. Only the recipient can read or delete a note, and unread notes show as a badge on the profile button. When email is set up, the recipient also gets an email that a note is waiting (never who wrote it or what it says), at most once every 12 hours.
 - **Mixtape.** A persistent player dressed as a cassette deck. Any classmate can add a tape: YouTube or YouTube Music videos and playlists, or Spotify tracks, albums, playlists and `spotify:` links. Titles are fetched automatically. It keeps playing across pages, moves to the next tape when one ends, and pauses when a video starts.
 - **Videos.** Classmates paste YouTube, Instagram, Facebook or X links; each plays in place on click. Organizers' picks from the event details come first.
 - **Quotes wall ("Who said it?").** Things teachers and classmates used to say. Anyone can add a quote (who said it and when are optional), comment on any quote, and react to it with an emoji. Reactions work like a chat app: a small counter per emoji, one reaction per person, and picking yours again takes it back. No profile needed; a visitor without one is counted by a random key their browser keeps.
@@ -85,7 +85,7 @@ Real class photos are uploaded through the admin page and stored in `DATA_DIR`. 
 | `GOOGLE_PHOTOS_ALBUM_URL` | Full shared album link. Kept out of git because the link itself grants access |
 | `EVENT_JSON` | The real event details as JSON, in the same shape as `content/event.json`. Without it the site shows that file's placeholders |
 | `YOUTUBE_PLAYLIST_ID` | Optional override for `music.youtubePlaylistId` in the event details |
-| `RESEND_API_KEY` | Optional. Turns on email (sign-in links and feedback) |
+| `RESEND_API_KEY` | Optional. Turns on email (sign-in links, note alerts and feedback) |
 | `EMAIL_FROM` | Sender address. Resend's default test sender only delivers to your own Resend account, so classmates need a verified domain |
 | `FEEDBACK_TO` | Where feedback messages are emailed |
 | `PUBLIC_URL` | The site's address, for links in emails. Defaults to the Railway domain, then to the request's address |

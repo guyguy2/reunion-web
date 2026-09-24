@@ -304,6 +304,12 @@ const MIGRATIONS: string[] = [
   INSERT INTO person_photos (person_id, kind, path) SELECT id, 'then', then_photo FROM people WHERE then_photo IS NOT NULL;
   INSERT INTO person_photos (person_id, kind, path) SELECT id, 'now', now_photo FROM people WHERE now_photo IS NOT NULL;
   `,
+  `
+  CREATE TABLE note_alerts (
+    person_id INTEGER PRIMARY KEY REFERENCES people(id) ON DELETE CASCADE,
+    sent_at TEXT NOT NULL
+  );
+  `,
 ]
 
 export function openDb(dataDir: string): Db {
