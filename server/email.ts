@@ -1,6 +1,7 @@
 import type { Config } from './config.ts'
 
-export type Mailer = (message: { to: string; subject: string; text: string; replyTo?: string }) => Promise<void>
+/** `text` always goes along; `html`, when given, is the version mail apps show, and `text` the fallback. */
+export type Mailer = (message: { to: string; subject: string; text: string; html?: string; replyTo?: string }) => Promise<void>
 
 /**
  * Sends email through Resend's HTTP API, or returns null when no API key is set.
@@ -10,11 +11,11 @@ export type Mailer = (message: { to: string; subject: string; text: string; repl
 export function resendMailer(config: Config, fetchImpl: typeof fetch = fetch): Mailer | null {
   const { resendApiKey, emailFrom } = config
   if (!resendApiKey) return null
-  return async ({ to, subject, text, replyTo }) => {
+  return async ({ to, subject, text, html, replyTo }) => {
     const res = await fetchImpl('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: emailFrom, to: [to], subject, text, ...(replyTo ? { reply_to: replyTo } : {}) }),
+      body: JSON.stringify({ from: emailFrom, to: [to], subject, text, ...(html ? { html } : {}), ...(replyTo ? { reply_to: replyTo } : {}) }),
     })
     if (!res.ok) throw new Error(`Resend answered ${res.status}`)
   }
@@ -28,8 +29,8 @@ export function resendMailer(config: Config, fetchImpl: typeof fetch = fetch): M
 export function gmailRelayMailer(config: Config, fetchImpl: typeof fetch = fetch): Mailer | null {
   const { gmailRelayUrl, gmailRelaySecret } = config
   if (!gmailRelayUrl || !gmailRelaySecret) return null
-  return async ({ to, subject, text, replyTo }) => {
-    const body = JSON.stringify({ secret: gmailRelaySecret, to, subject, text, ...(replyTo ? { replyTo } : {}) })
+  return async ({ to, subject, text, html, replyTo }) => {
+    const body = JSON.stringify({ secret: gmailRelaySecret, to, subject, text, ...(html ? { html } : {}), ...(replyTo ? { replyTo } : {}) })
     // Redirects are followed by hand: fetch would follow them as a GET and drop the message.
     let url = gmailRelayUrl
     for (let hop = 0; ; hop++) {

@@ -646,6 +646,13 @@ describe('Gmail relay', () => {
 
     await configuredMailer({ ...relay, resendApiKey: 'key' }, fakeFetch)!(message)
     expect(calls[2][0]).toBe('https://api.resend.com/emails')
+
+    // An HTML version goes along to either one, next to the text.
+    answer = { ok: true }
+    await mail({ ...message, html: '<p>Body</p>' })
+    expect(JSON.parse(calls[3][1].body as string)).toEqual({ secret: 'shh', ...message, html: '<p>Body</p>' })
+    await configuredMailer({ ...relay, resendApiKey: 'key' }, fakeFetch)!({ ...message, html: '<p>Body</p>' })
+    expect(JSON.parse(calls[4][1].body as string)).toMatchObject({ text: 'Body', html: '<p>Body</p>' })
   })
 
   it('follows Google redirects by hand, keeping the message, and never fails once the script has run', async () => {
@@ -736,8 +743,15 @@ describe('notes', () => {
 
     expect((await pass(penPal, 'Remember the trip to the lake?')).status).toBe(201)
     expect(outbox).toHaveLength(1)
-    expect(outbox[0]).toMatchObject({ to: 'penpal@example.com', text: expect.stringContaining('Pen Pal') })
-    expect(outbox[0].text).toContain('https://reunion.test/me')
+    expect(outbox[0]).toMatchObject({ to: 'penpal@example.com', subject: expect.stringContaining('פתק') })
+    // Both versions link to the profile (where the note is) and the RSVP, and sign off with the event config's line.
+    for (const body of [outbox[0].text, outbox[0].html!]) {
+      expect(body).toContain('https://reunion.test/me')
+      expect(body).toContain('https://reunion.test/event')
+      expect(body).toContain('Class of 2000 | School name')
+    }
+    expect(outbox[0].html).toMatch(/^<div dir="rtl"/)
+    expect(outbox[0].html).toContain('<a href="https://reunion.test/me"')
     expect(JSON.stringify(outbox[0])).not.toMatch(/lake|Letter Writer/)
 
     // More notes right after, signed or anonymous, wait out the cooldown instead of sending more email.

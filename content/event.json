@@ -2,6 +2,7 @@
   "title": "Class Reunion",
   "tagline": "Placeholder event details. Set EVENT_JSON to show the real ones.",
   "school": "School name",
+  "emailSignature": "Class of 2000 | School name",
   "date": "2030-01-01T18:00:00",
   "venue": {
     "name": "Venue TBD",

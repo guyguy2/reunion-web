@@ -93,7 +93,7 @@ Real class photos are uploaded through the admin page and stored in `DATA_DIR`. 
 | `PUBLIC_URL` | The site's address, for links in emails. Defaults to the Railway domain, then to the request's address |
 | `APP_VERSION` | Set by `pnpm release`: the deploy time and commit, shown in the principal's office |
 
-Event details, schedule, the house mixtape and the organizers' video list come from `EVENT_JSON`. They stay out of git so the repo doesn't publish the date, venue or schedule; `content/event.json` holds placeholder values that show the expected shape. In a local `.env`, wrap the JSON in single quotes and it can span several lines.
+Event details, schedule, the house mixtape, the organizers' video list and the line that signs the note emails (`emailSignature`) come from `EVENT_JSON`. They stay out of git so the repo doesn't publish the date, venue or schedule; `content/event.json` holds placeholder values that show the expected shape. In a local `.env`, wrap the JSON in single quotes and it can span several lines.
 
 ## Deployment (Railway)
 

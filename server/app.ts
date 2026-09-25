@@ -336,7 +336,8 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
       return c.json({ error: (err as Error).message }, 400)
     }
     // Not awaited: the note is already delivered, and the Gmail relay can take half a minute.
-    emailNoteAlert(db, recipient, mailer, config.publicUrl ?? new URL(c.req.url).origin).catch((err) =>
+    const event = loadEvent()
+    emailNoteAlert(db, recipient, mailer, config.publicUrl ?? new URL(c.req.url).origin, event.emailSignature || event.title).catch((err) =>
       console.error(`Note alert for person ${recipient.id} failed: ${(err as Error).message}`),
     )
     return c.json({ ok: true }, 201)
