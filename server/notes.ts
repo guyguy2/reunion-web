@@ -40,25 +40,57 @@ export function sendNote(db: Db, body: unknown, sender: PersonRow | undefined) {
   return recipient
 }
 
-/** Never says who wrote the note or what it says: that stays on the site, behind the recipient's sign-in. */
-export function noteAlertEmail(name: string, baseUrl: string) {
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!)
+}
+
+/** Never says who wrote the note or what it says: that stays on the site, behind the recipient's sign-in.
+ * `signature` closes the email; it comes from the event config, so the class and school stay out of git. */
+export function noteAlertEmail(baseUrl: string, signature: string) {
+  const profile = `${baseUrl}/me`
+  const rsvp = `${baseUrl}/event`
+  const p = (html: string) => `<p style="margin:0 0 16px">${html}</p>`
   return {
-    subject: 'מישהו מהמחזור העביר לך פתק',
+    subject: '💌 מישהו השאיר לך פתק...',
     text: [
-      `שלום ${name},`,
+      'גדול! מחכה לך פתק בתיבה 💌',
       '',
-      'מישהו מהמחזור העביר לך פתק באתר.',
-      'את הפתק אפשר לקרוא רק באתר, בפרופיל שלך:',
-      `${baseUrl}/me`,
+      'כדי לגלות מי כתב ומה כתוב בו, נכנסים לאתר ולוחצים על אייקון הפרופיל שלך 👀',
       '',
-      'אם זו הפעם הראשונה שלך באתר, בדף הזה מוסבר איך למצוא את עצמך בספר המחזור ולקחת את הפרופיל.',
+      'פעם ראשונה באתר?',
+      'כאן מוסבר איך למצוא את עצמך בספר המחזור ולשייך את הפרופיל אליך:',
+      profile,
+      '',
+      'ואם כבר נכנסת... 😉',
+      'נשמח שתסמן/י לנו גם אם את/ה מגיע/ה למפגש 🎉',
+      '',
+      '👉 לאישור הגעה:',
+      rsvp,
+      '',
+      'נתראה!',
+      signature,
+    ].join('\n'),
+    // Right to left, with the links on the words themselves.
+    html: [
+      '<div dir="rtl" style="text-align:right;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6;color:#151515">',
+      p('גדול! מחכה לך פתק בתיבה 💌'),
+      p('כדי לגלות מי כתב ומה כתוב בו, נכנסים לאתר ולוחצים על אייקון הפרופיל שלך 👀'),
+      p(
+        `פעם ראשונה באתר?<br><a href="${escapeHtml(profile)}" style="color:#ec4899;font-weight:bold">כאן</a> מוסבר איך למצוא את עצמך בספר המחזור ולשייך את הפרופיל אליך.`,
+      ),
+      p('ואם כבר נכנסת... 😉<br>נשמח שתסמן/י לנו גם אם את/ה מגיע/ה למפגש 🎉'),
+      p(
+        `👉 <a href="${escapeHtml(rsvp)}" style="display:inline-block;padding:8px 18px;background:#ec4899;color:#ffffff;font-weight:bold;text-decoration:none;border:2px solid #151515;border-radius:8px">לאישור הגעה</a>`,
+      ),
+      p(`נתראה!<br>${escapeHtml(signature)}`),
+      '</div>',
     ].join('\n'),
   }
 }
 
 /** Tells the recipient a note is waiting, when email is set up and there is an address on the profile.
  * The note is already saved, so a failed email is only logged. */
-export async function emailNoteAlert(db: Db, recipient: PersonRow, mail: Mailer | null, baseUrl: string) {
+export async function emailNoteAlert(db: Db, recipient: PersonRow, mail: Mailer | null, baseUrl: string, signature: string) {
   if (!mail || !recipient.email) return
   // Takes the slot in one statement, so two notes arriving together send one email.
   const due = db
@@ -69,7 +101,7 @@ export async function emailNoteAlert(db: Db, recipient: PersonRow, mail: Mailer 
     .run(recipient.id, `-${ALERT_HOURS} hours`).changes > 0
   if (!due) return
   try {
-    await mail({ to: recipient.email, ...noteAlertEmail(recipient.name, baseUrl) })
+    await mail({ to: recipient.email, ...noteAlertEmail(baseUrl, signature) })
   } catch (err) {
     // Gives the slot back, so the next note tries again.
     db.prepare('DELETE FROM note_alerts WHERE person_id = ?').run(recipient.id)

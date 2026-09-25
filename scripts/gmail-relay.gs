@@ -3,7 +3,7 @@
 //
 // Setup, signed in to the Gmail account the emails should come from:
 // 1. script.google.com > New project. Replace the code with this file and put the site's
-//    GMAIL_RELAY_SECRET in SECRET below. Save.
+//    GMAIL_RELAY_SECRET in SECRET below. SENDER_NAME is the name the emails come from. Save.
 // 2. Deploy > New deployment > type "Web app". Execute as: Me. Who has access: Anyone. Deploy.
 // 3. Authorize. Google warns the app is unverified: Advanced > Go to (project name). It asks only
 //    to send email as you (MailApp), never to read your mail.
@@ -24,7 +24,11 @@ function doPost(e) {
   if (SECRET.startsWith('PASTE_') || data.secret !== SECRET) return reply({ ok: false, error: 'forbidden' })
   if (!data.to || !data.subject || !data.text) return reply({ ok: false, error: 'missing to, subject or text' })
   try {
-    MailApp.sendEmail(data.to, data.subject, data.text, data.replyTo ? { name: SENDER_NAME, replyTo: data.replyTo } : { name: SENDER_NAME })
+    const options = { name: SENDER_NAME }
+    if (data.replyTo) options.replyTo = data.replyTo
+    // Mail apps show the HTML when there is one; the text is the fallback.
+    if (data.html) options.htmlBody = data.html
+    MailApp.sendEmail(data.to, data.subject, data.text, options)
   } catch (err) {
     return reply({ ok: false, error: String(err.message || err) })
   }
