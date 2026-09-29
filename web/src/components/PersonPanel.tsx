@@ -59,6 +59,11 @@ export function Enlarged({ src, onClose }: { src: string; onClose: () => void })
   )
 }
 
+/** The line over the claim button while neither an email nor a personal code is filled in, else ''. */
+export function claimNudge(owner: NewOwner): string {
+  return owner.email.trim() || owner.pin.trim() ? '' : 'בלי מייל או קוד אישי לא תוכלו להיכנס ממכשיר אחר.'
+}
+
 /** Every appearance of this person on the class photos, oldest first. */
 export function appearances(scenes: Scene[], personId: number): { scene: Scene; tag: Tag }[] {
   return scenes
@@ -241,6 +246,7 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
           claiming ? (
             <form className="space-y-3 rounded-lg border-[3px] border-ink p-3" onSubmit={(e) => (e.preventDefault(), claim())}>
               <NewOwnerFields value={owner} onChange={setOwner} />
+              {claimNudge(owner) && <p className="text-sm font-bold">{claimNudge(owner)}</p>}
               <button className="btn btn-pink w-full" disabled={busy || !newOwnerReady(owner)}>
                 זה הפרופיל שלי
               </button>

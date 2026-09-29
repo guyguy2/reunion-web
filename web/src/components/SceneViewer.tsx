@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import OpenSeadragon from 'openseadragon'
 import { faceUrl, type Scene, type Tag } from '../api.ts'
 import { LAYER, useEscape } from '../useEscape.ts'
+import { faceDirection, firstFace, neighborFace, SceneOpenFailed } from './SceneViewerParts.tsx'
 
 interface Props {
   scene: Scene
@@ -25,6 +26,9 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
   handlers.current = { onSelect, onBackgroundClick }
   const [openedDzi, setOpenedDzi] = useState<string | null>(null)
   const opened = openedDzi === scene.dzi
+  const [failedDzi, setFailedDzi] = useState<string | null>(null)
+  // The one face in the tab order. Arrow keys move between the faces, so Tab doesn't have to walk through all of them.
+  const tabStop = useRef<number | null>(null)
 
   useEffect(() => {
     const osd = OpenSeadragon({
@@ -41,6 +45,7 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
     })
     viewer.current = osd
     osd.addHandler('open', () => setOpenedDzi(scene.dzi))
+    osd.addHandler('open-failed', () => setFailedDzi(scene.dzi))
     osd.addHandler('canvas-click', (e) => {
       if (e.quick) handlers.current.onBackgroundClick()
     })
@@ -61,11 +66,42 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
     trackers.current = []
     elements.current.clear()
     osd.clearOverlays()
+    tabStop.current = (scene.tags.find((t) => t.id === tabStop.current) ?? firstFace(scene.tags))?.id ?? null
+    /** Moves the picture so a face reached by keyboard is on screen. */
+    const showFace = (tag: Tag) => {
+      const rect = osd.viewport.imageToViewportRectangle(tag.x, tag.y, tag.w, tag.h)
+      const bounds = osd.viewport.getBounds()
+      if (!bounds.containsPoint(rect.getTopLeft()) || !bounds.containsPoint(rect.getBottomRight())) osd.viewport.panTo(rect.getCenter())
+    }
     for (const tag of scene.tags) {
       const el = document.createElement('div')
       el.className = `face-tag${tag.personId == null ? ' unknown' : ''}${tag.personId != null && tag.personId === myPersonId ? ' mine' : ''}`
       // Hover bubble: a magnified face, the name, and what a click will do.
       const name = labelFor(tag)
+      el.tabIndex = tag.id === tabStop.current ? 0 : -1
+      el.setAttribute('role', 'button')
+      el.setAttribute('aria-label', name ?? 'מי בתמונה?')
+      el.addEventListener('focus', () => {
+        const previous = elements.current.get(tabStop.current ?? -1)
+        if (previous) previous.tabIndex = -1
+        tabStop.current = tag.id
+        el.tabIndex = 0
+        if (!el.matches(':focus-visible')) return
+        // Tabbing to a face off screen scrolls the viewer's own boxes; put them back and move the picture instead.
+        for (const box of [osd.container, osd.canvas]) box.scrollTop = box.scrollLeft = 0
+        showFace(tag)
+      })
+      // Enter or Space does what a click does; the arrow keys go to the next face that way. Handled keys stop here,
+      // so the viewer doesn't also pan. Escape and browser shortcuts (like Alt+Left for back) go on as usual.
+      el.addEventListener('keydown', (e) => {
+        const direction = faceDirection(e.key)
+        if ((e.key !== 'Enter' && e.key !== ' ' && !direction) || e.altKey || e.ctrlKey || e.metaKey) return
+        e.preventDefault()
+        e.stopPropagation()
+        if (!direction) return handlers.current.onSelect(tag)
+        const next = neighborFace(scene.tags, tag, direction)
+        if (next) elements.current.get(next.id)?.focus({ preventScroll: true })
+      })
       const bubble = document.createElement('div')
       bubble.className = 'bubble'
       bubble.dir = 'rtl'
@@ -124,10 +160,16 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
     vp.applyConstraints()
   }
 
+  const retry = () => {
+    setFailedDzi(null)
+    viewer.current?.open({ tileSource: scene.dzi })
+  }
+
   return (
     <div className="absolute inset-0 bg-ink">
       {/* The viewer positions things by left/top, so it stays LTR inside the RTL page. */}
       <div ref={host} dir="ltr" className="absolute inset-0" />
+      {failedDzi === scene.dzi && <SceneOpenFailed onRetry={retry} />}
       <div className="absolute end-3 bottom-20 flex flex-col gap-2 sm:bottom-4">
         <button className="btn btn-plain pixel h-11 w-11 p-0 text-2xl" onClick={() => zoom(1.6)} aria-label="הגדלה">
           +

@@ -29,6 +29,27 @@ export function useFilters(): [Filters, (next: Partial<Filters>) => void] {
   return [filters, set]
 }
 
+/** A class menu entry carries its poster's year, since two posters can print the same class name. */
+export const classValue = (year: number, classLabel: string) => `${year}|${classLabel}`
+
+/** What picking a class menu entry sets: that class and the year of the poster it is listed under. Clearing it keeps the year. */
+export function pickClass(value: string, current: Filters): Pick<Filters, 'year' | 'classLabel'> {
+  if (!value) return { year: current.year, classLabel: null }
+  const bar = value.indexOf('|')
+  return { year: Number(value.slice(0, bar)), classLabel: value.slice(bar + 1) }
+}
+
+/**
+ * The class menu entry that is showing. A shared link can name a class without a year: then the oldest poster with it.
+ * A class no poster has still gives a value, so the chip stays lit while it narrows the list.
+ */
+export function classMenuValue(options: { year: number; classes: string[] }[], filters: Filters): string {
+  const label = filters.classLabel
+  if (!label) return ''
+  const year = filters.year ?? options.find((o) => o.classes.includes(label))?.year
+  return year == null ? label : classValue(year, label)
+}
+
 const GENDERS = [
   [null, 'כולם'],
   ['f', 'בנות'],
@@ -88,16 +109,12 @@ export default function FriendFilters({ scenes, filters, onChange, total, shown,
           </Chip>
         )}
         {hasClasses && (
-          <Chip
-            label="כיתה"
-            value={filters.classLabel ?? ''}
-            onChange={(v) => onChange({ classLabel: v || null, year: v ? (options.find((o) => o.classes.includes(v))?.year ?? filters.year) : filters.year })}
-          >
+          <Chip label="כיתה" value={classMenuValue(options, filters)} onChange={(v) => onChange(pickClass(v, filters))}>
             <option value="">כל הכיתות</option>
             {years.map((o) => (
               <optgroup key={o.year} label={String(o.year)}>
                 {o.classes.map((c) => (
-                  <option key={c} value={c}>
+                  <option key={c} value={classValue(o.year, c)}>
                     {c}
                   </option>
                 ))}

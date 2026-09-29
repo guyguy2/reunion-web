@@ -14,6 +14,17 @@ function onKey(e: KeyboardEvent) {
   top.run()
 }
 
+/** Puts a handler on the stack and returns what takes it off again. The window listens only while the stack has something. */
+export function pushEscape(layer: number, run: () => void): () => void {
+  const entry: Entry = { layer, run }
+  if (stack.length === 0) window.addEventListener('keydown', onKey)
+  stack.push(entry)
+  return () => {
+    stack.splice(stack.indexOf(entry), 1)
+    if (stack.length === 0) window.removeEventListener('keydown', onKey)
+  }
+}
+
 /** Escape does the same as the window's X (or the picture's "all" button). One press closes only the top-most window. */
 export function useEscape(handler: (() => void) | null | false, layer: number) {
   const latest = useRef(handler)
@@ -22,12 +33,6 @@ export function useEscape(handler: (() => void) | null | false, layer: number) {
 
   useEffect(() => {
     if (!active) return
-    const entry: Entry = { layer, run: () => latest.current && latest.current() }
-    if (stack.length === 0) window.addEventListener('keydown', onKey)
-    stack.push(entry)
-    return () => {
-      stack.splice(stack.indexOf(entry), 1)
-      if (stack.length === 0) window.removeEventListener('keydown', onKey)
-    }
+    return pushEscape(layer, () => latest.current && latest.current())
   }, [active, layer])
 }

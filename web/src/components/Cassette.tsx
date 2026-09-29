@@ -81,27 +81,42 @@ export function spotifyEndWatcher(): (update: SpotifyPlayback, now: number, paus
 /** Lets other screens (like Videos) stop the mixtape before starting their own audio. */
 export const mixtape = { pause: () => {} }
 
+const PLAYER_FAILED = 'הנגן לא נטען. אולי חוסם פרסומות או שאין חיבור. נסו לרענן את הדף.'
+
+/** Adds a player's script to the page. `onError` runs when it can't load, after the tag is taken out again. */
+function addScript(src: string, onError: () => void) {
+  const script = document.createElement('script')
+  script.src = src
+  script.onerror = () => (script.remove(), onError())
+  document.head.appendChild(script)
+}
+
+// A script that fails to load (offline, or an ad blocker) rejects and is forgotten, so the next tape tries again.
 let apiPromise: Promise<void> | null = null
-function loadYouTubeApi(): Promise<void> {
-  apiPromise ??= new Promise((resolve) => {
+export function loadYouTubeApi(): Promise<void> {
+  apiPromise ??= new Promise((resolve, reject) => {
     if (window.YT?.Player) return resolve()
     window.onYouTubeIframeAPIReady = () => resolve()
-    const script = document.createElement('script')
-    script.src = 'https://www.youtube.com/iframe_api'
-    document.head.appendChild(script)
+    addScript('https://www.youtube.com/iframe_api', () => ((apiPromise = null), reject(new Error(PLAYER_FAILED))))
   })
   return apiPromise
 }
 
 let spotifyPromise: Promise<SpotifyIFrameApi> | null = null
-function loadSpotifyApi(): Promise<SpotifyIFrameApi> {
-  spotifyPromise ??= new Promise((resolve) => {
+export function loadSpotifyApi(): Promise<SpotifyIFrameApi> {
+  spotifyPromise ??= new Promise((resolve, reject) => {
     window.onSpotifyIframeApiReady = resolve
-    const script = document.createElement('script')
-    script.src = 'https://open.spotify.com/embed/iframe-api/v1'
-    document.head.appendChild(script)
+    addScript('https://open.spotify.com/embed/iframe-api/v1', () => ((spotifyPromise = null), reject(new Error(PLAYER_FAILED))))
   })
   return spotifyPromise
+}
+
+/**
+ * The tape the deck loads: none until the event details arrive, since they decide whether the organizers' playlist
+ * comes first. A tape picked before that would get a player that is thrown away a moment later.
+ */
+export function deckTape(eventLoaded: boolean, tapes: ShelfTape[], id: number | null): ShelfTape | null {
+  return eventLoaded ? pickTape(tapes, id) : null
 }
 
 /** What the deck buttons talk to, whichever service is playing the tape. */
@@ -166,11 +181,12 @@ export default function Cassette() {
   const [error, setError] = useState('')
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [hint, setHint] = useState(false)
+  const [failed, setFailed] = useState(false)
 
   const tapes = useMemo(() => buildShelf(houseId, houseTitle, shelf), [houseId, houseTitle, shelf])
   const tape = pickTape(tapes, tapeId)
-  const { provider, kind, externalId } = tape ?? {}
-  const isSpotify = provider === 'spotify'
+  const { provider, kind, externalId } = deckTape(event != null, tapes, tapeId) ?? {}
+  const isSpotify = tape?.provider === 'spotify'
 
   // When a tape finishes, the next one loads and starts playing. Refs, because the player's callbacks outlive renders.
   const autoplayNext = useRef(false)
@@ -225,6 +241,8 @@ export default function Cassette() {
     setReady(false)
     setPlaying(false)
     setTrack('')
+    setFailed(false)
+    const fail = () => !cancelled && setFailed(true)
     const autoplay = autoplayNext.current
     autoplayNext.current = false
     if (provider === 'youtube') {
@@ -258,7 +276,7 @@ export default function Cassette() {
           setVolume: (v) => player.setVolume(v),
           destroy: () => player.destroy(),
         })
-      })
+      }, fail)
     } else {
       loadSpotifyApi().then((spotify) => {
         if (cancelled) return
@@ -305,7 +323,7 @@ export default function Cassette() {
           })
           if (!cancelled) setReady(true)
         })
-      })
+      }, fail)
     }
     mixtape.pause = () => deck.current?.pause()
     return () => {
@@ -370,10 +388,15 @@ export default function Cassette() {
       <div className={`chunk max-h-[calc(100dvh-5.5rem)] w-80 max-w-[calc(100vw-1.5rem)] space-y-3 overflow-y-auto p-3 shadow-chunk-lg ${open ? '' : 'hidden'}`}>
         <Tape label={tape?.title ?? houseTitle} />
         <div className="lcd truncate text-xl" dir="auto">
-          {!tape ? 'אין קלטת' : !ready ? 'טוען...' : isSpotify ? tape.title : track || 'לחצו על נגן'}
+          {!tape ? 'אין קלטת' : failed ? 'הנגן לא נטען' : !ready ? 'טוען...' : isSpotify ? tape.title : track || 'לחצו על נגן'}
         </div>
         {/* YouTube asks that its player stays visible, so it plays on a tiny TV. Spotify brings its own controls. */}
-        <div ref={mount} className={`overflow-hidden rounded-lg border-[3px] border-ink bg-ink [&_iframe]:block [&_iframe]:w-full ${tape ? '' : 'hidden'}`} />
+        <div ref={mount} className={`overflow-hidden rounded-lg border-[3px] border-ink bg-ink [&_iframe]:block [&_iframe]:w-full ${tape && !failed ? '' : 'hidden'}`} />
+        {tape && failed && (
+          <p role="alert" className="text-sm font-bold text-pink">
+            {PLAYER_FAILED}
+          </p>
+        )}
         {tape && (
           <>
             <div className="flex items-center justify-between gap-2" dir="ltr">

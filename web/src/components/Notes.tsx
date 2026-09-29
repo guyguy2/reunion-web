@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { api, type Note, type Person } from '../api.ts'
-import { useStore } from '../store.tsx'
+import { attempt, useStore } from '../store.tsx'
 import { LAYER, useEscape } from '../useEscape.ts'
 
 const MAX_NOTE = 1000
@@ -181,11 +181,23 @@ export function NoteCard({
   )
 }
 
+/**
+ * Opening or throwing away a note, then reloading the inbox. Answers '' or what went wrong. The note stays where it
+ * was on a failure, so pressing its button again sends a new request.
+ */
+export function noteAction(action: () => Promise<unknown>, reload: () => Promise<void>): Promise<string> {
+  return attempt(async () => {
+    await action()
+    await reload()
+  })
+}
+
 /** Your notes, newest first. Opening one marks it read, which also clears the badge on the tab. */
 export function NotesInbox() {
   const { setUnreadNotes, personById } = useStore()
   const [notes, setNotes] = useState<Note[] | null>(null)
   const [replyTo, setReplyTo] = useState<Person | null>(null)
+  const [error, setError] = useState('')
 
   const load = async () => {
     const next = await api<Note[]>('/api/me/notes')
@@ -198,15 +210,19 @@ export function NotesInbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function act(action: Promise<unknown>) {
-    await action
-    await load()
+  async function act(action: () => Promise<unknown>) {
+    setError(await noteAction(action, load))
   }
 
   if (!notes?.length) return null
   return (
     <div className="chunk space-y-5 p-5">
       <h2 className="font-display text-xl">פתקים שקיבלתם</h2>
+      {error && (
+        <p role="alert" className="font-bold text-pink">
+          {error}
+        </p>
+      )}
       {notes.map((note, i) => {
         // Anonymous notes have no sender to answer, and a sender whose profile is gone can't be reached either.
         const sender = personById(note.from?.id)
@@ -215,8 +231,8 @@ export function NotesInbox() {
             key={note.id}
             note={note}
             index={i}
-            onOpen={() => act(api(`/api/me/notes/${note.id}/read`, { method: 'POST' }))}
-            onThrowAway={() => act(api(`/api/me/notes/${note.id}`, { method: 'DELETE' }))}
+            onOpen={() => act(() => api(`/api/me/notes/${note.id}/read`, { method: 'POST' }))}
+            onThrowAway={() => act(() => api(`/api/me/notes/${note.id}`, { method: 'DELETE' }))}
             onReply={sender && !sender.inMemoriam ? () => setReplyTo(sender) : undefined}
           />
         )

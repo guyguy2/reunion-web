@@ -11,16 +11,32 @@ function siteName(url: string): string {
   }
 }
 
+/** A copy of the server's email check in server/people.ts (server code can't be imported into the page). */
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/**
+ * Only a plain address becomes a mailto: link. The server's check lets `?`, `#`, `&` and `%` through, and in a mailto:
+ * link those add a hidden CC or a prefilled message, so an address with any of them is shown as text.
+ */
+function mailable(email: string): boolean {
+  return EMAIL.test(email) && !/[?#&%]/.test(email)
+}
+
 /** Email, phone, Instagram, LinkedIn, Facebook, X and website buttons. Shows the real address and handle, not just a label. */
 export default function ContactLinks({ person }: { person: Links }) {
   if (!person.email && !person.instagram && !person.linkedin && !person.facebook && !person.website && !person.phone && !person.x) return null
   return (
     <div className="mt-4 flex flex-wrap gap-2">
-      {person.email && (
-        <a className="btn btn-plain btn-sm break-all" href={`mailto:${person.email}`} dir="ltr" aria-label={`אימייל: ${person.email}`}>
-          {person.email}
-        </a>
-      )}
+      {person.email &&
+        (mailable(person.email) ? (
+          <a className="btn btn-plain btn-sm break-all" href={`mailto:${person.email}`} dir="ltr" aria-label={`אימייל: ${person.email}`}>
+            {person.email}
+          </a>
+        ) : (
+          <span className="self-center text-sm break-all" dir="ltr">
+            {person.email}
+          </span>
+        ))}
       {person.phone && (
         <a className="btn btn-plain btn-sm" href={`tel:${person.phone.replace(/[^\d+]/g, '')}`} dir="ltr" aria-label={`טלפון: ${person.phone}`}>
           {person.phone}
