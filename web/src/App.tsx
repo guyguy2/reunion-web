@@ -31,6 +31,7 @@ const ADMIN_TAB = { to: '/admin', label: 'חדר המנהל', spine: 'var(--colo
 function Shell() {
   const { event, role, loading, unreadNotes } = useStore()
   const tabs = role === 'admin' ? [...TABS, ADMIN_TAB] : TABS
+  const [logoutFailed, setLogoutFailed] = useState(false)
 
   useEffect(() => {
     if (event?.title) document.title = event.title
@@ -89,10 +90,20 @@ function Shell() {
         <button
           className="cursor-pointer text-sm font-bold underline decoration-2 underline-offset-2 opacity-70 hover:opacity-100"
           // The request carries the edit token so the server can revoke it; then this browser forgets it too.
-          onClick={() => api('/api/logout', { method: 'POST' }).then(() => (editToken.clear(), location.assign('/')))}
+          // If it fails, both stay as they are and the header says so.
+          onClick={() =>
+            api('/api/logout', { method: 'POST' })
+              .then(() => (editToken.clear(), location.assign('/')))
+              .catch(() => setLogoutFailed(true))
+          }
         >
           התנתקות
         </button>
+        {logoutFailed && (
+          <span role="alert" className="text-sm font-bold text-pink">
+            ההתנתקות נכשלה. נסו שוב.
+          </span>
+        )}
       </header>
 
       <main className="relative min-h-0 flex-1 overflow-y-auto pb-14 sm:pb-0">
