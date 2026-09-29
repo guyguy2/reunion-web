@@ -522,13 +522,13 @@ describe('fixing the roster', () => {
   })
 
   it('never merges a claimed profile away', async () => {
-    const into = tagRow(kid93).person_id as number
+    const into = insertPerson(db, { name: 'Avi Unclaimed' })
     expect((await app.request(`/api/admin/people/${alreadyHere}/merge`, json(admin, { intoId: into }))).status).toBe(400)
     expect(getPerson(db, alreadyHere)).toBeDefined()
   })
 
   it('lets organizers set a gender, and rejects anything else', async () => {
-    const id = insertPerson(db, { name: 'Tal Adler' })
+    const id = insertPerson(db, { name: 'Tal Adler', gender: 'f' })
     expect((await app.request(`/api/admin/people/${id}`, json(admin, { gender: 'm' }, 'PATCH'))).status).toBe(200)
     expect(getPerson(db, id)!.gender).toBe('m')
     expect((await app.request(`/api/admin/people/${id}`, json(admin, { gender: 'x' }, 'PATCH'))).status).toBe(400)

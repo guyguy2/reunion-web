@@ -127,6 +127,8 @@ describe('built client', () => {
     expect(res.status).toBe(404)
     expect(res.headers.get('cache-control')).not.toBe('public, max-age=31536000, immutable')
     expect(await res.text()).not.toBe(INDEX_HTML)
+    // Climbing out of the folder does not get the page that long cache either.
+    expect((await app.request('/assets/..%2findex.html')).headers.get('cache-control')).toBe('no-cache')
   })
 
   it('does not serve files outside the built client, even to a visitor without the passcode', async () => {

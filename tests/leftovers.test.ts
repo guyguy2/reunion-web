@@ -49,18 +49,18 @@ describe('organizer reset of a claimed profile', () => {
   it('also lifts the lock on the personal code, so the owner can sign in with a new one', async () => {
     const created = await app.request('/api/people', json('POST', { name: 'Locked Out Owner', pin: '2468' }, { Cookie: member }))
     const { person } = await created.json()
-    const login = (pin: string, ip: string) => app.request(`/api/people/${person.id}/login`, json('POST', { pin }, { Cookie: member, 'x-real-ip': ip }))
+    const tryPin = (pin: string, ip: string) => app.request(`/api/people/${person.id}/login`, json('POST', { pin }, { Cookie: member, 'x-real-ip': ip }))
     // Ten wrong guesses from ten addresses lock the profile, not any one address.
-    for (let i = 0; i < 10; i++) expect((await login(String(1000 + i), `10.9.0.${i}`)).status).toBe(401)
-    expect((await login('2468', '10.9.1.1')).status).toBe(429)
+    for (let i = 0; i < 10; i++) expect((await tryPin(String(1000 + i), `10.9.0.${i}`)).status).toBe(401)
+    expect((await tryPin('2468', '10.9.1.1')).status).toBe(429)
 
     expect((await app.request(`/api/admin/people/${person.id}/reset-claim`, { method: 'POST', headers: { Cookie: admin } })).status).toBe(200)
     // The code went with the claim, and the answer says so rather than to wait.
-    expect((await login('2468', '10.9.1.2')).status).toBe(400)
+    expect((await tryPin('2468', '10.9.1.2')).status).toBe(400)
 
     const claimed = await app.request(`/api/people/${person.id}/claim`, json('POST', { pin: '1357' }, { Cookie: member }))
     expect(claimed.status).toBe(200)
-    expect((await login('1357', '10.9.1.3')).status).toBe(200)
+    expect((await tryPin('1357', '10.9.1.3')).status).toBe(200)
   })
 })
 

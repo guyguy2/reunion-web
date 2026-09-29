@@ -611,7 +611,10 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
       return c.notFound()
     }
     // A built file that is not there is a 404. Sent as the page instead, it would be cached for a year under that name.
-    if (rel.startsWith('assets/')) return sendFile(c, config.webDir, rel, 'public, max-age=31536000, immutable')
+    // Where the address leads, not how it starts, so "assets/../index.html" is not cached for a year.
+    if (path.resolve(config.webDir, rel).startsWith(path.resolve(config.webDir, 'assets') + path.sep)) {
+      return sendFile(c, config.webDir, rel, 'public, max-age=31536000, immutable')
+    }
     const file = fs.existsSync(path.join(config.webDir, rel)) && path.extname(rel) ? rel : 'index.html'
     return sendFile(c, config.webDir, file, 'no-cache')
   })
