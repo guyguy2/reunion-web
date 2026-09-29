@@ -183,7 +183,7 @@ describe('credits', () => {
   const credits = async (cookie: string) => ((await (await app.request('/api/event', { headers: { Cookie: cookie } })).json()) as { credits: unknown }).credits
 
   it('saves the list and serves it with the event details', async () => {
-    await put(admin, { credits: [] })
+    expect((await put(admin, { credits: [] })).status).toBe(200)
     expect(await credits(member)).toEqual([])
     const res = await put(admin, { credits: [{ name: 'דנה', note: 'סרקה את ספר המחזור' }, { name: 'יוסי', note: '' }] })
     expect(res.status).toBe(200)

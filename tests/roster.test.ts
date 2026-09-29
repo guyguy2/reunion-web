@@ -341,9 +341,12 @@ describe('staff faces', () => {
     const staff = insertTag(db, scene96, { x: 900, y: 10, w: 50, h: 60 }, null)
     db.prepare('UPDATE tags SET is_staff = 1 WHERE id = ?').run(staff)
     const unnamed = insertTag(db, scene96, { x: 900, y: 200, w: 50, h: 60 }, null)
-    // Only the classmate's face is one more waiting for a name.
-    expect(await stats()).toMatchObject({ faces: before.faces + 1, facesNamed: before.facesNamed })
-    db.prepare('DELETE FROM tags WHERE id IN (?, ?)').run(staff, unnamed)
+    try {
+      // Only the classmate's face is one more waiting for a name.
+      expect(await stats()).toMatchObject({ faces: before.faces + 1, facesNamed: before.facesNamed })
+    } finally {
+      db.prepare('DELETE FROM tags WHERE id IN (?, ?)').run(staff, unnamed)
+    }
   })
 
   it('a teacher who got a profile can be marked as staff: the faces are hidden and the profile goes', async () => {
