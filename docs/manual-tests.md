@@ -1,6 +1,6 @@
 # Manual tests after a deploy
 
-What to click through on the live site after `pnpm release`. The automated suite (`pnpm typecheck && pnpm test`) covers the server routes end to end on a temporary database, and the client only through pure helpers, so the browser checks below matter most for anything in `web/`.
+What to click through on the live site after `pnpm release`. The automated suite (`pnpm typecheck && pnpm test`) covers the server routes end to end on a temporary database, and the client only through pure helpers, so the browser checks below matter most for anything in `web/`. `pnpm test:e2e` also drives the client in a real browser against demo data on a throwaway local server; it never touches the live site.
 
 ## Before deploying
 
