@@ -53,21 +53,26 @@ const SPOTIFY_END_WAIT_MS = 1000
 
 /**
  * Spotify's iFrame API has no "ended" event, only playback_update. So a tape counts as finished when it stops by itself
- * after playing: paused at the end, or rewound to the start right after reaching it. Pausing partway doesn't count.
+ * after playing: paused at the end, or rewound to the start right after reaching it. Pausing partway doesn't count,
+ * and neither does a pause the site asked for (`pausedByUs`), even at the very end.
  * One watcher per tape; `now` is in milliseconds.
  */
-export function spotifyEndWatcher(): (update: SpotifyPlayback, now: number) => boolean {
+export function spotifyEndWatcher(): (update: SpotifyPlayback, now: number, pausedByUs?: boolean) => boolean {
   let playing: { position: number; duration: number; at: number } | null = null
   const nearEnd = (position: number, duration: number) => duration > SPOTIFY_END_MS && position >= duration - SPOTIFY_END_MS
-  return ({ isPaused, isBuffering, position, duration }, now) => {
-    if (isBuffering) return false
+  return ({ isPaused, isBuffering, position, duration }, now, pausedByUs = false) => {
     if (!isPaused) {
-      playing = { position, duration, at: now }
+      if (!isBuffering) playing = { position, duration, at: now }
       return false
     }
-    if (!playing) return false
+    // Stopped by the site, or before it played: nothing to go on until it plays again.
+    if (pausedByUs || !playing) {
+      playing = null
+      return false
+    }
+    if (isBuffering) return false
     const ended = nearEnd(position, duration) || (position < 1000 && nearEnd(playing.position + now - playing.at, playing.duration))
-    // Stopped partway: nothing to go on until it plays again.
+    // Stopped partway: likewise.
     if (!ended) playing = null
     return ended
   }
@@ -259,27 +264,45 @@ export default function Cassette() {
         if (cancelled) return
         spotify.createController(target, { uri: spotifyUri({ kind, externalId }), width: '100%', height: 152 }, (controller) => {
           const ended = spotifyEndWatcher()
+          // Whether it is playing, and whether the site just paused it (the deck button, or another screen starting its
+          // own audio). The next paused update is then no ending, however close to the end it is.
+          let sounding = false
+          let pausedByUs = false
           // A cached embed can fire 'ready' before this callback runs, so a live controller counts as ready.
           controller.addListener('ready', () => {
             setReady(true)
             if (autoplay) controller.play()
           })
           controller.addListener('playback_update', (e) => {
-            setPlaying(!e.data.isPaused)
+            const { isPaused, isBuffering } = e.data
+            setPlaying(!isPaused)
+            sounding = !isPaused
+            const byUs = isPaused && pausedByUs
+            if (isPaused) pausedByUs = false
             // It has to stay finished for a moment, in case the embed only stopped between the songs of an album.
-            if (ended(e.data, Date.now())) {
+            if (ended(e.data, Date.now(), byUs)) {
               if (endTimer === undefined && !finished && !cancelled) {
                 endTimer = setTimeout(() => {
                   finished = true
                   advance.current()
                 }, SPOTIFY_END_WAIT_MS)
               }
-            } else if (!e.data.isPaused) {
+            } else if (!isPaused || isBuffering) {
               clearTimeout(endTimer)
               endTimer = undefined
             }
           })
-          attach({ toggle: () => controller.togglePlay(), pause: () => controller.pause(), destroy: () => controller.destroy() })
+          attach({
+            toggle: () => {
+              if (sounding) pausedByUs = true
+              controller.togglePlay()
+            },
+            pause: () => {
+              if (sounding) pausedByUs = true
+              controller.pause()
+            },
+            destroy: () => controller.destroy(),
+          })
           if (!cancelled) setReady(true)
         })
       })

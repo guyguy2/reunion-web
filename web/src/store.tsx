@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { api, ApiError, editToken, type EventInfo, type Person, type Role, type Scene } from './api.ts'
 
 interface Store {
@@ -7,7 +7,7 @@ interface Store {
   scenes: Scene[]
   event: EventInfo | null
   /** Replaces the event details after an organizer edits them, so every screen shows what the server now has. */
-  setEvent: (event: EventInfo) => void
+  setEvent: Dispatch<SetStateAction<EventInfo | null>>
   me: Person | null
   /** Unread notes for "me", kept apart from `me` so opening a note doesn't reset the profile form. */
   unreadNotes: number
@@ -40,6 +40,13 @@ export async function checkEditToken(token: string): Promise<Person> {
   if (res.status === 403 || res.status === 404) throw new ApiError(res.status, 'קישור העריכה כבר לא בתוקף. בקשו מאחד המארגנים לאפס את הפרופיל.')
   if (!res.ok || !data) throw new ApiError(res.status, data?.error ?? 'משהו השתבש. נסו שוב.')
   return data
+}
+
+/** Checks a new edit token and only then stores it, so when the check throws, the token this device already had stays. */
+export async function adoptEditToken(token: string): Promise<Person> {
+  const person = await checkEditToken(token)
+  editToken.set(token)
+  return person
 }
 
 export function useStore(): Store {
@@ -93,8 +100,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
       loading,
       reload,
       adoptToken: async (token) => {
-        const person = await checkEditToken(token)
-        editToken.set(token)
+        const person = await adoptEditToken(token)
         setMe(person)
         setUnreadNotes(person.unreadNotes ?? 0)
         return person

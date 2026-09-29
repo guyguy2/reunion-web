@@ -230,7 +230,7 @@ export default function EventPage() {
         </section>
       )}
 
-      <Credits credits={event.credits} isAdmin={role === 'admin'} onSaved={(credits) => setEvent({ ...event, credits })} />
+      <Credits credits={event.credits} isAdmin={role === 'admin'} onSaved={(credits) => setEvent((e) => e && { ...e, credits })} />
 
       <footer className="flex items-center justify-center gap-3 pb-6 text-sm">
         <span>מספר המבקרים עד כה:</span>

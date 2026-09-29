@@ -263,9 +263,11 @@ export default function Me() {
   const [search] = useSearchParams()
   const navigate = useNavigate()
   const [draft, setDraft] = useState<Draft | null>(null)
-  // Whose profile the form was built from, and whether anything was typed since. Refs: only read when `me` changes.
+  // Whose profile the form was built from, whether anything was typed since, and how many edits so far. Refs: only
+  // read when `me` changes or a save finishes.
   const draftFor = useRef<number | null>(null)
   const dirty = useRef(false)
+  const edits = useRef(0)
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [linkError, setLinkError] = useState('')
   const [copied, setCopied] = useState(false)
@@ -280,9 +282,7 @@ export default function Me() {
     adoptToken(tokenFromLink)
       .catch((err) =>
         setLinkError(
-          err instanceof ApiError && (err.status === 403 || err.status === 404)
-            ? err.message
-            : 'לא הצלחנו לבדוק את קישור העריכה. בדקו את החיבור לאינטרנט ופתחו את הקישור שוב.',
+          err instanceof ApiError ? err.message : 'לא הצלחנו לבדוק את קישור העריכה. בדקו את החיבור לאינטרנט ופתחו את הקישור שוב.',
         ),
       )
       .then(() => navigate('/me', { replace: true }))
@@ -310,16 +310,18 @@ export default function Me() {
   const editLink = `${location.origin}/me/${editToken.get() ?? ''}`
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     dirty.current = true
+    edits.current++
     setDraft({ ...draft, [key]: value })
   }
 
   async function save(e: FormEvent) {
     e.preventDefault()
     setStatus(null)
+    const sent = edits.current
     try {
       await api('/api/me', { method: 'PATCH', json: draft })
-      // Saved, so the reload may refill the form with what the server kept.
-      dirty.current = false
+      // Saved, so the reload may refill the form with what the server kept, unless more was typed meanwhile.
+      if (edits.current === sent) dirty.current = false
       await reload()
       setStatus({ kind: 'ok', text: 'נשמר. נראה מעולה!' })
     } catch (err) {
@@ -356,8 +358,9 @@ export default function Me() {
     try {
       await api('/api/me', { method: 'DELETE' })
       forgetMe()
-      await reload()
+      // Leave first: a refresh that fails now shouldn't strand you on an empty profile page.
       navigate('/')
+      await reload()
     } catch (err) {
       setStatus({ kind: 'error', text: (err as Error).message })
     }

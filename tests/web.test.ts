@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { matchesPerson, type Person, type Scene, type Tape } from '../web/src/api.ts'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { editToken, matchesPerson, type Person, type Scene, type Tape } from '../web/src/api.ts'
 import { spotifyEndWatcher } from '../web/src/components/Cassette.tsx'
 import ContactLinks from '../web/src/components/ContactLinks.tsx'
 import { daysLeft, rsvpShortcut } from '../web/src/components/Rsvp.tsx'
@@ -12,7 +12,7 @@ import { dealIntoColumns } from '../web/src/routes/Memories.tsx'
 import { firstName, greeting } from '../web/src/components/Welcome.tsx'
 import { daysUntil } from '../web/src/days.ts'
 import { nameKey, possibleDuplicates } from '../web/src/roster.ts'
-import { checkEditToken } from '../web/src/store.tsx'
+import { adoptEditToken, checkEditToken } from '../web/src/store.tsx'
 import { buildShelf, canSkip, nextTape, pickTape, spotifyUri, tapeFinished } from '../web/src/tapes.ts'
 import { embedUrl, isTallEmbed, streamUrl, thumbnailUrl } from '../web/src/videos.ts'
 import { compareClass, filterOptions, filterPeople, isFiltering, NO_FILTERS, tilePhoto, unknownFaces, type Filters } from '../web/src/yearbook.ts'
@@ -348,6 +348,38 @@ describe('checking an edit token', () => {
   })
 })
 
+describe('adopting an edit token', () => {
+  const saved = new Map<string, string>()
+  beforeEach(() => {
+    saved.clear()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => void saved.set(key, value),
+      removeItem: (key: string) => void saved.delete(key),
+    })
+    editToken.set('old-token')
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('keeps the token this device had when the server refuses the new one', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'קישור העריכה אינו תקף' }), { status: 403 })))
+    await expect(adoptEditToken('dead-token')).rejects.toThrow('כבר לא בתוקף')
+    expect(editToken.get()).toBe('old-token')
+  })
+
+  it('keeps it through a network failure too', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))))
+    await expect(adoptEditToken('new-token')).rejects.toThrow()
+    expect(editToken.get()).toBe('old-token')
+  })
+
+  it('stores the new token once the server knows it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 7, name: 'Dana' }), { status: 200 })))
+    expect(await adoptEditToken('new-token')).toMatchObject({ id: 7 })
+    expect(editToken.get()).toBe('new-token')
+  })
+})
+
 describe('spotify tape end', () => {
   const update = (isPaused: boolean, position: number, isBuffering = false) => ({ isPaused, isBuffering, position, duration: 200_000 })
 
@@ -368,5 +400,24 @@ describe('spotify tape end', () => {
     const stopped = spotifyEndWatcher()
     stopped(update(false, 100_000), 0)
     expect(stopped(update(true, 0), 800)).toBe(false)
+  })
+
+  it('does not count a pause the site asked for, even right at the end', () => {
+    const ended = spotifyEndWatcher()
+    ended(update(false, 199_000), 0)
+    expect(ended(update(true, 199_500), 500, true)).toBe(false)
+    expect(ended(update(true, 199_500), 900)).toBe(false)
+    ended(update(false, 199_500), 5_000)
+    expect(ended(update(true, 200_000), 5_500)).toBe(true)
+  })
+
+  it('does not count the buffering between the songs of an album', () => {
+    const ended = spotifyEndWatcher()
+    ended(update(false, 199_000), 0)
+    expect(ended(update(true, 200_000), 1_000)).toBe(true)
+    expect(ended(update(true, 0, true), 1_200)).toBe(false)
+    expect(ended(update(false, 0, true), 1_400)).toBe(false)
+    expect(ended(update(false, 300), 1_700)).toBe(false)
+    expect(ended(update(true, 400), 1_800)).toBe(false)
   })
 })
