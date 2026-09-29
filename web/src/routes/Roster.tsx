@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { api, faceUrl, type Person, type Scene, type Tag } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { possibleDuplicates } from '../roster.ts'
+import { isTypingTarget } from '../adminKeys.ts'
+import { nextLive, previousLive } from '../adminQueue.ts'
 
 const VIEWS = [
   { id: 'review', label: 'אחד אחד' },
@@ -62,7 +64,18 @@ function ImportExport({ onDone }: { onDone: (message: string) => void }) {
         </a>
         <label className={`btn btn-plain btn-sm ${busy ? 'opacity-50' : ''}`}>
           {busy ? 'מייבא...' : 'העלאת קובץ רשימה'}
-          <input type="file" accept="application/json,.json" className="sr-only" disabled={busy} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+          <input
+            type="file"
+            accept="application/json,.json"
+            className="sr-only"
+            disabled={busy}
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              // Cleared so picking the same file again, after fixing it, still uploads it.
+              e.target.value = ''
+              if (file) upload(file)
+            }}
+          />
         </label>
       </div>
     </div>
@@ -71,7 +84,7 @@ function ImportExport({ onDone }: { onDone: (message: string) => void }) {
 
 /** The organizers' tool for the names read off the posters: fix a name, say boy or girl, take the staff out, join or split people. */
 export default function Roster() {
-  const { people, reload } = useStore()
+  const { people, reload, personById } = useStore()
   const [scenes, setScenes] = useState<Scene[]>([])
   const [view, setView] = useState<ViewId>('review')
   const [onlyOpen, setOnlyOpen] = useState(true)
@@ -81,6 +94,9 @@ export default function Roster() {
   // The queue is frozen while you work through it, so answering doesn't pull the next card out from under you.
   const [queue, setQueue] = useState<number[] | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
+  // One answer or new profile at a time, so a double click doesn't skip a person or create two.
+  const inFlight = useRef(false)
+  const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
     setScenes((await api<Scene[]>('/api/admin/scenes')).filter((s) => s.kind === 'group'))
@@ -101,15 +117,31 @@ export default function Roster() {
     if (queue === null && onPosters.length) setQueue(onPosters.filter((p) => !onlyOpen || !p.gender).map((p) => p.id))
   }, [queue, onPosters, onlyOpen])
 
-  const current = people.find((p) => p.id === queue?.[index])
+  // People merged away or hidden as staff stay in the frozen queue; the review steps over them.
+  const exists = (id: number) => personById(id) !== undefined
+  const at = queue ? nextLive(queue, index, exists) : index
+  const before = queue ? previousLive(queue, at, exists) : -1
+  const live = queue?.filter(exists) ?? []
+  const current = people.find((p) => p.id === queue?.[at])
   const run = async (action: () => Promise<unknown>, advance = false) => {
     setNotice('')
     try {
       await action()
       await load()
-      if (advance) setIndex((i) => i + 1)
+      if (advance) setIndex(at + 1)
     } catch (err) {
       setNotice(`שגיאה: ${(err as Error).message}`)
+    }
+  }
+  const once = async (action: () => Promise<unknown>) => {
+    if (inFlight.current) return
+    inFlight.current = true
+    setBusy(true)
+    try {
+      await action()
+    } finally {
+      inFlight.current = false
+      setBusy(false)
     }
   }
   const patchPerson = (id: number, json: Partial<Person>) => api(`/api/admin/people/${id}`, { method: 'PATCH', json })
@@ -120,20 +152,20 @@ export default function Roster() {
   // The split-off person is reviewed next.
   const splitOff = (tag: Tag) => async () => {
     const added = await api<Person>(`/api/admin/tags/${tag.id}/new-person`, { json: {} })
-    setQueue((q) => q && [...q.slice(0, index + 1), added.id, ...q.slice(index + 1)])
+    setQueue((q) => q && [...q.slice(0, at + 1), added.id, ...q.slice(at + 1)])
   }
-  const answer = (p: Person, gender: 'm' | 'f') => run(() => saveName(p).then(() => patchPerson(p.id, { gender })), true)
+  const answer = (p: Person, gender: 'm' | 'f') => once(() => run(() => saveName(p).then(() => patchPerson(p.id, { gender })), true))
 
-  // B for boy, G for girl, arrows to move. Not while typing a name.
+  // B for boy, G for girl, arrows to move. Not while typing a name or feedback, or while a key is held down.
   useEffect(() => {
     if (view !== 'review' || !current) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey) return
+      if (isTypingTarget(e.target) || e.repeat || e.metaKey || e.ctrlKey) return
       const key = e.key.toLowerCase()
       if (key === 'b' || key === 'נ') answer(current, 'm')
       else if (key === 'g' || key === 'ע') answer(current, 'f')
-      else if (e.key === 'ArrowLeft') setIndex((i) => Math.min(i + 1, queue?.length ?? 0))
-      else if (e.key === 'ArrowRight') setIndex((i) => Math.max(i - 1, 0))
+      else if (e.key === 'ArrowLeft') setIndex(Math.min(at + 1, queue?.length ?? 0))
+      else if (e.key === 'ArrowRight' && before >= 0) setIndex(before)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -172,13 +204,13 @@ export default function Roster() {
           ) : (
             <div key={current.id} className="space-y-4">
               <p className="lcd inline-block text-lg">
-                {index + 1}/{queue!.length}
+                {live.indexOf(current.id) + 1}/{live.length}
               </p>
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {facesOf.get(current.id)?.map((face) => (
                   <FaceCard key={face.tag.id} face={face}>
                     {(facesOf.get(current.id)?.length ?? 0) > 1 && (
-                      <button className="btn btn-plain btn-sm w-full px-1 text-xs" onClick={() => run(splitOff(face.tag))}>
+                      <button className="btn btn-plain btn-sm w-full px-1 text-xs" disabled={busy} onClick={() => once(() => run(splitOff(face.tag)))}>
                         זה מישהו אחר
                       </button>
                     )}
@@ -208,10 +240,10 @@ export default function Roster() {
                 </button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button className="btn btn-plain btn-sm" disabled={index === 0} onClick={() => setIndex(index - 1)}>
+                <button className="btn btn-plain btn-sm" disabled={before < 0} onClick={() => setIndex(before)}>
                   הקודם
                 </button>
-                <button className="btn btn-plain btn-sm" onClick={() => setIndex(index + 1)}>
+                <button className="btn btn-plain btn-sm" onClick={() => setIndex(at + 1)}>
                   דילוג
                 </button>
                 <button className="btn btn-plain btn-sm ms-auto" disabled={current.claimed} onClick={() => run(() => api(`/api/admin/people/${current.id}/staff`, { method: 'POST' }), true)}>
@@ -264,11 +296,11 @@ export default function Roster() {
                   onSubmit={(e) => {
                     e.preventDefault()
                     const name = new FormData(e.currentTarget).get('name')
-                    run(() => api(`/api/admin/tags/${face.tag.id}/new-person`, { json: { name } }))
+                    once(() => run(() => api(`/api/admin/tags/${face.tag.id}/new-person`, { json: { name } })))
                   }}
                 >
                   <input name="name" className="field px-2 py-1 text-sm" dir="auto" defaultValue={face.tag.caption ?? ''} placeholder="שם" required minLength={2} />
-                  <button className="btn btn-sm w-full px-1 text-xs">יצירת פרופיל</button>
+                  <button className="btn btn-sm w-full px-1 text-xs" disabled={busy}>יצירת פרופיל</button>
                 </form>
                 <button className="btn btn-plain btn-sm w-full px-1 text-xs" onClick={() => run(() => api(`/api/admin/tags/${face.tag.id}`, { method: 'PATCH', json: { staff: true } }))}>
                   צוות / לא פנים
