@@ -5,7 +5,7 @@ import { requireAdmin, type AppEnv } from './auth.ts'
 import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, readImageField } from './images.ts'
 import { addPhoto, deletePhoto, deletePhotos, getPerson, insertPerson, parseCsv, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { addGroupScene, deleteScene, getScene, insertTag, listScenes, rebuildWall, serializeTag } from './scenes.ts'
-import { saveCredits } from './credits.ts'
+import { listCredits, saveCredits } from './credits.ts'
 import { loadDemoData, SiteNotEmptyError } from './demo.ts'
 import { listFeedback } from './feedback.ts'
 import { readJson } from './http.ts'
@@ -299,7 +299,7 @@ export function adminRoutes(config: Config, db: Db) {
     })
   })
 
-  // ---- Backup: every profile, picture and face tag as one JSON download. Photos are not included,
+  // ---- Backup: every profile, picture, face tag and shared post as one JSON download. Photo files are not included,
   // and neither are sign-in secrets or private notes. ----
   admin.get('/export', (c) => {
     const people = (db.prepare('SELECT * FROM people ORDER BY id').all() as Record<string, unknown>[]).map(
@@ -313,6 +313,13 @@ export function adminRoutes(config: Config, db: Db) {
       people,
       scenes: db.prepare('SELECT * FROM scenes ORDER BY id').all(),
       tags: db.prepare('SELECT * FROM tags ORDER BY id').all(),
+      person_photos: db.prepare('SELECT * FROM person_photos ORDER BY id').all(),
+      quotes: db.prepare('SELECT * FROM quotes ORDER BY id').all(),
+      quote_comments: db.prepare('SELECT * FROM quote_comments ORDER BY id').all(),
+      quote_reactions: db.prepare('SELECT * FROM quote_reactions ORDER BY quote_id, reactor').all(),
+      tapes: db.prepare('SELECT * FROM tapes ORDER BY id').all(),
+      videos: db.prepare('SELECT * FROM videos ORDER BY id').all(),
+      credits: listCredits(db),
     })
   })
 

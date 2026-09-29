@@ -229,3 +229,28 @@ describe('rebuilding the wall', () => {
     expect(siteDb.prepare(`SELECT COUNT(*) AS n FROM scenes WHERE kind = 'mosaic'`).get()).toEqual({ n: 0 })
   })
 })
+
+describe('backup export', () => {
+  it('includes the photos list, quotes, comments, reactions, tapes, videos and credits', async () => {
+    const owner = insertPerson(db, { name: 'Sam Carter' })
+    db.prepare(`INSERT INTO person_photos (person_id, kind, path) VALUES (?, 'then', 'uploads/sam-then.webp')`).run(owner)
+    const quote = Number(db.prepare(`INSERT INTO quotes (text, said_by) VALUES ('Open your books to page 42', 'The teacher')`).run().lastInsertRowid)
+    db.prepare(`INSERT INTO quote_comments (quote_id, message, added_by) VALUES (?, 'Every single day', 'Jenny')`).run(quote)
+    reactToQuote(db, quote, 'backup-reactor', { emoji: REACTIONS[0] })
+    db.prepare(`INSERT INTO tapes (provider, kind, external_id, title) VALUES ('youtube', 'video', 'bkpVideo001', 'Backup song')`).run()
+    db.prepare(`INSERT INTO videos (provider, external_id, title) VALUES ('youtube', 'bkpClip0001', 'Backup clip')`).run()
+    saveCredits(db, { credits: [{ name: 'Jenny Carter', note: 'Scanned the yearbook' }] })
+
+    const res = await app.request('/api/admin/export', { headers: { Cookie: admin } })
+    expect(res.status).toBe(200)
+    const backup = await res.json()
+    expect(backup.person_photos).toContainEqual(expect.objectContaining({ person_id: owner, kind: 'then', path: 'uploads/sam-then.webp' }))
+    expect(backup.quotes).toContainEqual(expect.objectContaining({ id: quote, text: 'Open your books to page 42', said_by: 'The teacher' }))
+    expect(backup.quote_comments).toContainEqual(expect.objectContaining({ quote_id: quote, message: 'Every single day', added_by: 'Jenny' }))
+    expect(backup.quote_reactions).toContainEqual(expect.objectContaining({ quote_id: quote, reactor: 'backup-reactor', emoji: REACTIONS[0] }))
+    expect(backup.tapes).toContainEqual(expect.objectContaining({ provider: 'youtube', external_id: 'bkpVideo001', title: 'Backup song' }))
+    expect(backup.videos).toContainEqual(expect.objectContaining({ provider: 'youtube', external_id: 'bkpClip0001', title: 'Backup clip' }))
+    expect(backup.credits).toEqual([{ name: 'Jenny Carter', note: 'Scanned the yearbook' }])
+    for (const table of ['person_photos', 'quotes', 'quote_comments', 'quote_reactions', 'tapes', 'videos']) expect(backup[table]).toHaveLength(count(table))
+  })
+})
