@@ -172,9 +172,10 @@ export function createLockout() {
 }
 
 /**
- * The client's address. Railway's proxy appends the address it saw to x-forwarded-for, so the last hop is the real
- * one; the client can put anything in the earlier hops and in x-real-ip. Tests and local runs send only x-real-ip.
+ * The client's address. Railway's edge proxy sets X-Real-IP to the address it saw, and does not set X-Forwarded-For,
+ * so on Railway x-forwarded-for can arrive just as the client wrote it. The last x-forwarded-for hop is only a fallback
+ * for a proxy that sets no X-Real-IP.
  */
 export function clientKey(c: Context): string {
-  return c.req.header('x-forwarded-for')?.split(',').at(-1)?.trim() || c.req.header('x-real-ip') || 'local'
+  return c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',').at(-1)?.trim() || 'local'
 }

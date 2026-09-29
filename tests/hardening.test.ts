@@ -69,16 +69,17 @@ afterEach(() => {
 afterAll(() => fs.rmSync(dataDir, { recursive: true, force: true }))
 
 describe('client key', () => {
-  it('takes the last x-forwarded-for hop, the one the proxy added, over x-real-ip', async () => {
+  it('takes x-real-ip, which Railway sets, over x-forwarded-for, and else the last x-forwarded-for hop', async () => {
     const keyed = new Hono().get('/', (c) => c.text(clientKey(c)))
     const key = async (headers: Record<string, string>) => (await keyed.request('/', { headers })).text()
-    expect(await key({ 'x-forwarded-for': '1.1.1.1, 2.2.2.2', 'x-real-ip': '9.9.9.9' })).toBe('2.2.2.2')
+    expect(await key({ 'x-forwarded-for': '1.1.1.1, 2.2.2.2', 'x-real-ip': '9.9.9.9' })).toBe('9.9.9.9')
+    expect(await key({ 'x-forwarded-for': '1.1.1.1, 2.2.2.2' })).toBe('2.2.2.2')
     expect(await key({ 'x-real-ip': '9.9.9.9' })).toBe('9.9.9.9')
     expect(await key({})).toBe('local')
   })
 
-  it('does not give more passcode guesses to a client that makes up its address', async () => {
-    const proxied = (spoofed: string) => ({ 'x-forwarded-for': `${spoofed}, 10.61.0.1`, 'x-real-ip': spoofed })
+  it('does not give more passcode guesses to a client that makes up x-forwarded-for', async () => {
+    const proxied = (spoofed: string) => ({ 'x-forwarded-for': `${spoofed}, ${spoofed}`, 'x-real-ip': '10.61.0.1' })
     for (let i = 0; i < 10; i++) {
       expect((await app.request('/api/login', json('POST', { passcode: 'nope' }, proxied(`1.1.1.${i}`)))).status).toBe(401)
     }
