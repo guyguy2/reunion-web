@@ -1,24 +1,46 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { api, editToken, type EventInfo, type Person, type Role, type Scene } from './api.ts'
+import { api, ApiError, editToken, type EventInfo, type Person, type Role, type Scene } from './api.ts'
 
 interface Store {
   role: Role
   people: Person[]
   scenes: Scene[]
   event: EventInfo | null
+  /** Replaces the event details after an organizer edits them, so every screen shows what the server now has. */
+  setEvent: (event: EventInfo) => void
   me: Person | null
   /** Unread notes for "me", kept apart from `me` so opening a note doesn't reset the profile form. */
   unreadNotes: number
   setUnreadNotes: (n: number) => void
   loading: boolean
   reload: () => Promise<void>
-  /** Stores a new edit token (after claiming or opening an edit link) and refreshes "me". */
-  adoptToken: (token: string) => Promise<Person | null>
+  /**
+   * Checks a new edit token (after claiming, signing in or opening an edit link), and only then stores it and
+   * refreshes "me". When it doesn't check out it throws, and whatever token this device already had stays.
+   */
+  adoptToken: (token: string) => Promise<Person>
   forgetMe: () => void
   personById: (id: number | null | undefined) => Person | undefined
 }
 
 const StoreContext = createContext<Store | null>(null)
+
+/**
+ * Asks the server whose profile a new edit token opens, sending that token alone, before anything is stored.
+ * A token the server doesn't know throws an ApiError (403 or 404); a request that never got an answer throws an Error.
+ */
+export async function checkEditToken(token: string): Promise<Person> {
+  let res: Response
+  try {
+    res = await fetch('/api/me', { headers: { 'x-edit-token': token }, credentials: 'same-origin' })
+  } catch {
+    throw new Error('אין חיבור לאתר כרגע. בדקו את האינטרנט ונסו שוב.')
+  }
+  const data = (await res.json().catch(() => null)) as (Person & { error?: string }) | null
+  if (res.status === 403 || res.status === 404) throw new ApiError(res.status, 'קישור העריכה כבר לא בתוקף. בקשו מאחד המארגנים לאפס את הפרופיל.')
+  if (!res.ok || !data) throw new ApiError(res.status, data?.error ?? 'משהו השתבש. נסו שוב.')
+  return data
+}
 
 export function useStore(): Store {
   const store = useContext(StoreContext)
@@ -64,15 +86,17 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
       people,
       scenes,
       event,
+      setEvent,
       me,
       unreadNotes: me ? unreadNotes : 0,
       setUnreadNotes,
       loading,
       reload,
       adoptToken: async (token) => {
+        const person = await checkEditToken(token)
         editToken.set(token)
-        const person = await loadMe()
-        if (!person) editToken.clear()
+        setMe(person)
+        setUnreadNotes(person.unreadNotes ?? 0)
         return person
       },
       forgetMe: () => {
@@ -81,7 +105,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
       },
       personById: (id) => (id == null ? undefined : index.get(id)),
     }
-  }, [role, people, scenes, event, me, unreadNotes, loading, reload, loadMe])
+  }, [role, people, scenes, event, me, unreadNotes, loading, reload])
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
 }

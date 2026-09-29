@@ -1,14 +1,18 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { matchesPerson, type Person, type Scene, type Tape } from '../web/src/api.ts'
+import { spotifyEndWatcher } from '../web/src/components/Cassette.tsx'
 import ContactLinks from '../web/src/components/ContactLinks.tsx'
 import { daysLeft, rsvpShortcut } from '../web/src/components/Rsvp.tsx'
 import { NoteCard } from '../web/src/components/Notes.tsx'
 import { Credits } from '../web/src/routes/EventPage.tsx'
+import { shouldResetDraft } from '../web/src/routes/Me.tsx'
 import { dealIntoColumns } from '../web/src/routes/Memories.tsx'
 import { firstName, greeting } from '../web/src/components/Welcome.tsx'
+import { daysUntil } from '../web/src/days.ts'
 import { nameKey, possibleDuplicates } from '../web/src/roster.ts'
+import { checkEditToken } from '../web/src/store.tsx'
 import { buildShelf, canSkip, nextTape, pickTape, spotifyUri, tapeFinished } from '../web/src/tapes.ts'
 import { embedUrl, isTallEmbed, streamUrl, thumbnailUrl } from '../web/src/videos.ts'
 import { compareClass, filterOptions, filterPeople, isFiltering, NO_FILTERS, tilePhoto, unknownFaces, type Filters } from '../web/src/yearbook.ts'
@@ -265,6 +269,11 @@ describe('RSVP shortcut', () => {
     expect(rsvpShortcut(null, party, new Date('2026-12-17T18:00:00').getTime())).toEqual({ kind: 'over' })
   })
 
+  it('counts the evening before as tomorrow and the morning of as today', () => {
+    expect(rsvpShortcut('yes', party, new Date('2026-12-16T20:00:00').getTime())).toEqual({ kind: 'going', days: 1 })
+    expect(rsvpShortcut('yes', party, new Date('2026-12-17T10:00:00').getTime())).toEqual({ kind: 'going', days: 0 })
+  })
+
   it('says today and tomorrow in words', () => {
     expect([daysLeft(89), daysLeft(1), daysLeft(0), daysLeft(null)]).toEqual(['עוד 89 ימים', 'מחר!', 'היום!', 'האירוע'])
   })
@@ -293,5 +302,71 @@ describe('credits', () => {
 
   it('does not offer the edit button to anyone else', () => {
     expect(render([{ name: 'דנה' }])).not.toContain('עריכה')
+  })
+})
+
+describe('days until', () => {
+  const party = new Date('2026-12-17T18:00:00')
+
+  it('counts calendar days, not 24-hour stretches', () => {
+    expect(daysUntil(party, new Date('2026-12-16T20:00:00'))).toBe(1)
+    expect(daysUntil(party, new Date('2026-12-17T10:00:00'))).toBe(0)
+    expect(daysUntil(party, new Date('2026-12-15T23:59:00'))).toBe(2)
+  })
+
+  it('goes negative once the day has passed', () => {
+    expect(daysUntil(party, new Date('2026-12-18T09:00:00'))).toBe(-1)
+  })
+})
+
+describe('profile form', () => {
+  it('keeps what you typed when the profile reloads, and starts over for another profile', () => {
+    expect(shouldResetDraft(7, 7, true)).toBe(false)
+    expect(shouldResetDraft(7, 7, false)).toBe(true)
+    expect(shouldResetDraft(null, 7, false)).toBe(true)
+    expect(shouldResetDraft(7, 8, true)).toBe(true)
+    expect(shouldResetDraft(7, null, true)).toBe(true)
+  })
+})
+
+describe('checking an edit token', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  const reply = (status: number, body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status }))
+
+  it('asks the server about the new token itself', async () => {
+    const fetch = reply(200, { id: 7, name: 'Dana' })
+    vi.stubGlobal('fetch', fetch)
+    expect(await checkEditToken('new-token')).toMatchObject({ id: 7 })
+    expect(fetch).toHaveBeenCalledWith('/api/me', expect.objectContaining({ headers: { 'x-edit-token': 'new-token' } }))
+  })
+
+  it('says a dead link is dead, and asks to try again when the network fails', async () => {
+    vi.stubGlobal('fetch', reply(403, { error: 'קישור העריכה אינו תקף' }))
+    await expect(checkEditToken('old-token')).rejects.toThrow('כבר לא בתוקף')
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))))
+    await expect(checkEditToken('old-token')).rejects.toThrow('שוב')
+  })
+})
+
+describe('spotify tape end', () => {
+  const update = (isPaused: boolean, position: number, isBuffering = false) => ({ isPaused, isBuffering, position, duration: 200_000 })
+
+  it('finishes when the tape stops by itself at the end, not when someone pauses it', () => {
+    const ended = spotifyEndWatcher()
+    expect(ended(update(true, 0), 0)).toBe(false)
+    expect(ended(update(false, 60_000), 1_000)).toBe(false)
+    expect(ended(update(true, 60_000), 2_000)).toBe(false)
+    expect(ended(update(false, 199_000), 5_000)).toBe(false)
+    expect(ended(update(true, 200_000, true), 6_000)).toBe(false)
+    expect(ended(update(true, 200_000), 6_000)).toBe(true)
+  })
+
+  it('also counts a tape that rewinds to the start right after reaching the end', () => {
+    const ended = spotifyEndWatcher()
+    ended(update(false, 199_000), 0)
+    expect(ended(update(true, 0), 800)).toBe(true)
+    const stopped = spotifyEndWatcher()
+    stopped(update(false, 100_000), 0)
+    expect(stopped(update(true, 0), 800)).toBe(false)
   })
 })

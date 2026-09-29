@@ -73,6 +73,7 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
   const [writing, setWriting] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
   const [claiming, setClaiming] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [owner, setOwner] = useState<NewOwner>({ pin: '', email: '' })
   const faces = appearances(scenes, person.id)
   const thenSrc = person.thenPhoto ?? (faces.length ? faceUrl(faces[faces.length - 1].tag) : null)
@@ -98,6 +99,7 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
   }
 
   async function claim() {
+    setBusy(true)
     setError('')
     try {
       const { token } = await api<{ token: string }>(`/api/people/${person.id}/claim`, { json: owner })
@@ -106,6 +108,8 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
       navigate('/me?welcome=1')
     } catch (err) {
       setError((err as Error).message)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -237,7 +241,7 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
           claiming ? (
             <form className="space-y-3 rounded-lg border-[3px] border-ink p-3" onSubmit={(e) => (e.preventDefault(), claim())}>
               <NewOwnerFields value={owner} onChange={setOwner} />
-              <button className="btn btn-pink w-full" disabled={!newOwnerReady(owner)}>
+              <button className="btn btn-pink w-full" disabled={busy || !newOwnerReady(owner)}>
                 זה הפרופיל שלי
               </button>
             </form>

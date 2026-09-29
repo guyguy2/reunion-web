@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { api, type Person } from '../api.ts'
 import { useStore } from '../store.tsx'
-
-const DAY = 86_400_000
+import { daysUntil } from '../days.ts'
 
 export type RsvpShortcutState =
   | { kind: 'ask'; date: string | null }
@@ -14,7 +13,7 @@ export type RsvpShortcutState =
 export function rsvpShortcut(attending: Person['attending'] | undefined, eventDate: string, now: number): RsvpShortcutState {
   const when = new Date(eventDate).getTime()
   if (when <= now) return { kind: 'over' }
-  const days = Number.isNaN(when) ? null : Math.floor((when - now) / DAY)
+  const days = Number.isNaN(when) ? null : daysUntil(new Date(when), new Date(now))
   if (attending === 'yes') return { kind: 'going', days }
   if (attending === 'no') return { kind: 'answered', days }
   const date = Number.isNaN(when) ? null : new Date(when).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })

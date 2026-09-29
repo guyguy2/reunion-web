@@ -18,11 +18,19 @@ interface YTPlayer {
 }
 // Minimal slice of Spotify's iFrame API. It has no volume or next/previous; the embed shows its own controls.
 interface SpotifyController {
+  play(): void
   togglePlay(): void
   pause(): void
   destroy(): void
   addListener(event: 'ready', cb: () => void): void
-  addListener(event: 'playback_update', cb: (e: { data: { isPaused: boolean } }) => void): void
+  addListener(event: 'playback_update', cb: (e: { data: SpotifyPlayback }) => void): void
+}
+/** What Spotify's playback_update reports. Position and duration are in milliseconds. */
+interface SpotifyPlayback {
+  isPaused: boolean
+  isBuffering: boolean
+  position: number
+  duration: number
 }
 interface SpotifyIFrameApi {
   createController(el: HTMLElement, opts: { uri: string; width: string; height: number }, cb: (c: SpotifyController) => void): void
@@ -37,6 +45,33 @@ declare global {
 
 const YT_ENDED = 0
 const YT_PLAYING = 1
+
+/** Paused this close to its end, a Spotify tape has finished. */
+const SPOTIFY_END_MS = 1500
+/** How long a finished-looking Spotify tape has to stay stopped before the next tape loads. */
+const SPOTIFY_END_WAIT_MS = 1000
+
+/**
+ * Spotify's iFrame API has no "ended" event, only playback_update. So a tape counts as finished when it stops by itself
+ * after playing: paused at the end, or rewound to the start right after reaching it. Pausing partway doesn't count.
+ * One watcher per tape; `now` is in milliseconds.
+ */
+export function spotifyEndWatcher(): (update: SpotifyPlayback, now: number) => boolean {
+  let playing: { position: number; duration: number; at: number } | null = null
+  const nearEnd = (position: number, duration: number) => duration > SPOTIFY_END_MS && position >= duration - SPOTIFY_END_MS
+  return ({ isPaused, isBuffering, position, duration }, now) => {
+    if (isBuffering) return false
+    if (!isPaused) {
+      playing = { position, duration, at: now }
+      return false
+    }
+    if (!playing) return false
+    const ended = nearEnd(position, duration) || (position < 1000 && nearEnd(playing.position + now - playing.at, playing.duration))
+    // Stopped partway: nothing to go on until it plays again.
+    if (!ended) playing = null
+    return ended
+  }
+}
 
 /** Lets other screens (like Videos) stop the mixtape before starting their own audio. */
 export const mixtape = { pause: () => {} }
@@ -173,6 +208,9 @@ export default function Cassette() {
     if (!provider || !kind || !externalId || !el) return
     let cancelled = false
     let current: Deck | null = null
+    // Spotify only: the pending move to the next tape, and whether this one already moved on.
+    let endTimer: ReturnType<typeof setTimeout> | undefined
+    let finished = false
     const attach = (d: Deck) => {
       if (cancelled) return d.destroy()
       current = deck.current = d
@@ -220,9 +258,27 @@ export default function Cassette() {
       loadSpotifyApi().then((spotify) => {
         if (cancelled) return
         spotify.createController(target, { uri: spotifyUri({ kind, externalId }), width: '100%', height: 152 }, (controller) => {
+          const ended = spotifyEndWatcher()
           // A cached embed can fire 'ready' before this callback runs, so a live controller counts as ready.
-          controller.addListener('ready', () => setReady(true))
-          controller.addListener('playback_update', (e) => setPlaying(!e.data.isPaused))
+          controller.addListener('ready', () => {
+            setReady(true)
+            if (autoplay) controller.play()
+          })
+          controller.addListener('playback_update', (e) => {
+            setPlaying(!e.data.isPaused)
+            // It has to stay finished for a moment, in case the embed only stopped between the songs of an album.
+            if (ended(e.data, Date.now())) {
+              if (endTimer === undefined && !finished && !cancelled) {
+                endTimer = setTimeout(() => {
+                  finished = true
+                  advance.current()
+                }, SPOTIFY_END_WAIT_MS)
+              }
+            } else if (!e.data.isPaused) {
+              clearTimeout(endTimer)
+              endTimer = undefined
+            }
+          })
           attach({ toggle: () => controller.togglePlay(), pause: () => controller.pause(), destroy: () => controller.destroy() })
           if (!cancelled) setReady(true)
         })
@@ -231,6 +287,7 @@ export default function Cassette() {
     mixtape.pause = () => deck.current?.pause()
     return () => {
       cancelled = true
+      clearTimeout(endTimer)
       current?.destroy()
       deck.current = null
       el.replaceChildren()

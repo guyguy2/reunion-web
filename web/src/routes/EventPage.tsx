@@ -49,8 +49,9 @@ function ClaudeMark() {
 /**
  * Thanks to whoever helped build the site. Hidden from everyone else when the list is empty,
  * but always shown to the organizers, who edit it here rather than in the event details.
+ * `onSaved` gets the list the server kept, so the rest of the site stops showing the old one.
  */
-export function Credits({ credits, isAdmin }: { credits: Credit[] | undefined; isAdmin: boolean }) {
+export function Credits({ credits, isAdmin, onSaved }: { credits: Credit[] | undefined; isAdmin: boolean; onSaved?: (credits: Credit[]) => void }) {
   const [list, setList] = useState<Credit[]>(credits ?? [])
   const [draft, setDraft] = useState<Credit[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -62,6 +63,7 @@ export function Credits({ credits, isAdmin }: { credits: Credit[] | undefined; i
     try {
       const saved = await api<{ credits: Credit[] }>('/api/admin/credits', { method: 'PUT', json: { credits: rows } })
       setList(saved.credits)
+      onSaved?.(saved.credits)
       setDraft(null)
     } catch (err) {
       setError((err as Error).message)
@@ -159,7 +161,7 @@ export function Credits({ credits, isAdmin }: { credits: Credit[] | undefined; i
 }
 
 export default function EventPage() {
-  const { event, people, role } = useStore()
+  const { event, setEvent, people, role } = useStore()
   if (!event) return null
   const date = new Date(event.date)
   const coming = people.filter((p) => p.attending === 'yes').length
@@ -228,7 +230,7 @@ export default function EventPage() {
         </section>
       )}
 
-      <Credits credits={event.credits} isAdmin={role === 'admin'} />
+      <Credits credits={event.credits} isAdmin={role === 'admin'} onSaved={(credits) => setEvent({ ...event, credits })} />
 
       <footer className="flex items-center justify-center gap-3 pb-6 text-sm">
         <span>מספר המבקרים עד כה:</span>

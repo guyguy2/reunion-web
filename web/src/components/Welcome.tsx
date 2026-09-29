@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Person } from '../api.ts'
 import { useStore } from '../store.tsx'
+import { daysUntil } from '../days.ts'
 import { LAYER, useEscape } from '../useEscape.ts'
 import { daysLeft, RsvpChoice } from './Rsvp.tsx'
 
@@ -52,7 +53,7 @@ export default function Welcome() {
         {upcoming && (
           <p className="flex flex-wrap items-center gap-3 text-lg">
             <span>{event.title}</span>
-            <span className="lcd text-2xl leading-none">{daysLeft(Math.floor((when - Date.now()) / 86_400_000))}</span>
+            <span className="lcd text-2xl leading-none">{daysLeft(daysUntil(new Date(when), new Date()))}</span>
           </p>
         )}
         <p className="text-lg">

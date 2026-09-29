@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { api, editToken, matchesPerson, type Person, type Photo } from '../api.ts'
+import { api, ApiError, editToken, matchesPerson, type Person, type Photo } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { NotesInbox } from '../components/Notes.tsx'
 import CodeLogin, { NewOwnerFields, newOwnerReady, type NewOwner } from '../components/CodeLogin.tsx'
@@ -44,6 +44,14 @@ function toDraft(p: Person): Draft {
     showPhone: p.showPhone ?? true,
     showX: p.showX ?? true,
   }
+}
+
+/**
+ * Whether the profile form starts over from `me` when `me` changes. Every reload (a photo upload, a new code, an
+ * RSVP) hands back a new `me`, so only another profile, or a form with nothing typed into it, is rebuilt.
+ */
+export function shouldResetDraft(prevId: number | null, nextId: number | null, dirty: boolean): boolean {
+  return prevId !== nextId || !dirty
 }
 
 /** Up to MAX_PHOTOS pictures of one kind: the first is the one the yearbook uses. */
@@ -196,16 +204,20 @@ function Join() {
   const [name, setName] = useState('')
   const [owner, setOwner] = useState<NewOwner>({ pin: '', email: '' })
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
   const sameName = name.trim().length > 1 ? people.filter((p) => p.claimed && matchesPerson(p, name)) : []
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    setSaving(true)
     try {
       const { token } = await api<{ token: string }>('/api/people', { json: { name, ...owner } })
       await adoptToken(token)
       await reload()
     } catch (err) {
       setError((err as Error).message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -237,7 +249,7 @@ function Join() {
         )}
         <NewOwnerFields value={owner} onChange={setOwner} />
         {error && <p className="font-bold text-pink">{error}</p>}
-        <button className="btn" disabled={name.trim().length < 2 || !newOwnerReady(owner)}>
+        <button className="btn" disabled={saving || name.trim().length < 2 || !newOwnerReady(owner)}>
           יצירת הפרופיל שלי
         </button>
       </form>
@@ -251,6 +263,9 @@ export default function Me() {
   const [search] = useSearchParams()
   const navigate = useNavigate()
   const [draft, setDraft] = useState<Draft | null>(null)
+  // Whose profile the form was built from, and whether anything was typed since. Refs: only read when `me` changes.
+  const draftFor = useRef<number | null>(null)
+  const dirty = useRef(false)
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [linkError, setLinkError] = useState('')
   const [copied, setCopied] = useState(false)
@@ -260,14 +275,25 @@ export default function Me() {
   // Arriving via a private edit link: adopt the token, then drop it from the address bar.
   useEffect(() => {
     if (!tokenFromLink) return
-    adoptToken(tokenFromLink).then((person) => {
-      if (!person) setLinkError('קישור העריכה כבר לא בתוקף. בקשו מאחד המארגנים לאפס את הפרופיל.')
-      navigate('/me', { replace: true })
-    })
+    setLinkError('')
+    // If it fails, whoever was signed in on this device stays signed in.
+    adoptToken(tokenFromLink)
+      .catch((err) =>
+        setLinkError(
+          err instanceof ApiError && (err.status === 403 || err.status === 404)
+            ? err.message
+            : 'לא הצלחנו לבדוק את קישור העריכה. בדקו את החיבור לאינטרנט ופתחו את הקישור שוב.',
+        ),
+      )
+      .then(() => navigate('/me', { replace: true }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tokenFromLink])
 
   useEffect(() => {
+    const id = me?.id ?? null
+    if (!shouldResetDraft(draftFor.current, id, dirty.current)) return
+    draftFor.current = id
+    dirty.current = false
     setDraft(me ? toDraft(me) : null)
   }, [me])
 
@@ -282,13 +308,18 @@ export default function Me() {
   }
 
   const editLink = `${location.origin}/me/${editToken.get() ?? ''}`
-  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft({ ...draft, [key]: value })
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
+    dirty.current = true
+    setDraft({ ...draft, [key]: value })
+  }
 
   async function save(e: FormEvent) {
     e.preventDefault()
     setStatus(null)
     try {
       await api('/api/me', { method: 'PATCH', json: draft })
+      // Saved, so the reload may refill the form with what the server kept.
+      dirty.current = false
       await reload()
       setStatus({ kind: 'ok', text: 'נשמר. נראה מעולה!' })
     } catch (err) {
@@ -321,10 +352,15 @@ export default function Me() {
   }
 
   async function removeMe() {
-    await api('/api/me', { method: 'DELETE' })
-    forgetMe()
-    await reload()
-    navigate('/')
+    setStatus(null)
+    try {
+      await api('/api/me', { method: 'DELETE' })
+      forgetMe()
+      await reload()
+      navigate('/')
+    } catch (err) {
+      setStatus({ kind: 'error', text: (err as Error).message })
+    }
   }
 
   const text = (key: keyof Draft, label: string, props: { type?: string; placeholder?: string } = {}) => (
@@ -346,8 +382,9 @@ export default function Me() {
     <div className="mx-auto max-w-2xl space-y-6 p-4 pb-28 sm:p-8 sm:pb-28">
       <h1 className="heading">הפרופיל שלי</h1>
       {search.get('welcome') && <p className="text-lg font-bold">ברוכים הבאים!</p>}
+      {linkError && <p className="rounded-lg border-[3px] border-ink bg-pink p-3 font-bold text-white">{linkError}</p>}
 
-      <PinSetter key={String(me.hasPin)} person={me} />
+      <PinSetter key={me.id} person={me} />
 
       <div className="chunk space-y-2 p-4">
         <p className="font-bold">קישור העריכה הפרטי שלכם</p>
