@@ -21,3 +21,8 @@ export async function saveThenReload<T>(save: () => Promise<T>, reload: () => Pr
 }
 
 export const RELOAD_FAILED = 'השינוי נשמר, אבל לא הצלחנו לרענן את התמונה, אז ייתכן שמה שמוצג כאן לא מעודכן.'
+
+/** A failed reload says the change was kept only when something was saved; auto-detect that found no faces saves nothing. */
+export function reloadFailedText(savedSomething: boolean): string {
+  return savedSomething ? RELOAD_FAILED : 'לא הצלחנו לרענן את התמונה, אז ייתכן שמה שמוצג כאן לא מעודכן.'
+}

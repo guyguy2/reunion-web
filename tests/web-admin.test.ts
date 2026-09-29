@@ -1,4 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import { createApp } from '../server/app.ts'
+import type { Config } from '../server/config.ts'
+import { openDb } from '../server/db.ts'
 import type { Scene, Tag } from '../web/src/api.ts'
 import { BACKUP_DESCRIPTION } from '../web/src/adminBackup.ts'
 import { finished, isBusy, started, type Busy } from '../web/src/adminBusy.ts'
@@ -7,7 +13,7 @@ import { oneAtATime } from '../web/src/adminOnce.ts'
 import { nextLive, previousLive } from '../web/src/adminQueue.ts'
 import { fetchImageBlob } from '../web/src/fetchImage.ts'
 import { landOnPerson, yearbookPath } from '../web/src/personLink.ts'
-import { RELOAD_FAILED, saveThenReload } from '../web/src/taggerSave.ts'
+import { RELOAD_FAILED, reloadFailedText, saveThenReload } from '../web/src/taggerSave.ts'
 
 // The tests run without a DOM, so this stands in for an element: `closest` walks up the parents like the browser's,
 // matching tag names, [attribute] and [attribute="value"] selectors and :not(), and like the browser's it fails when
@@ -212,6 +218,39 @@ describe('backup description', () => {
   it('says what stays out of it', () => {
     for (const phrase of ['בלי קבצי התמונות', 'קודים אישיים', 'קישורי עריכה', 'בלי פתקים', 'בלי משוב']) expect(BACKUP_DESCRIPTION).toContain(phrase)
   })
+
+  // A new part in the export fails here until it is named above and in the description.
+  describe('against the real export', () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-backup-text-'))
+    const config: Config = {
+      dataDir,
+      classPasscode: 'class-pass',
+      adminPasscode: 'admin-pass',
+      sessionSecret: 'test-secret',
+      port: 0,
+      webDir: path.join(dataDir, 'web'),
+      secureCookies: false,
+      publicUrl: 'https://example.test',
+    }
+    const app = createApp(config, openDb(dataDir))
+
+    afterAll(() => fs.rmSync(dataDir, { recursive: true, force: true }))
+
+    it('lists exactly the parts GET /api/admin/export returns', async () => {
+      const login = await app.request('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-real-ip': '10.0.0.1' },
+        body: JSON.stringify({ passcode: 'admin-pass' }),
+      })
+      expect(login.status).toBe(200)
+      const admin = login.headers.get('set-cookie')!.split(';')[0]
+
+      const res = await app.request('/api/admin/export', { headers: { Cookie: admin } })
+      expect(res.status).toBe(200)
+      const parts = Object.keys((await res.json()) as Record<string, unknown>).filter((key) => key !== 'exportedAt' && key !== 'schemaVersion')
+      expect(parts.sort()).toEqual(Object.keys(included).sort())
+    })
+  })
 })
 
 describe('tagger save and reload', () => {
@@ -237,6 +276,13 @@ describe('tagger save and reload', () => {
   it('explains a failed reload in Hebrew, saying the change was kept', () => {
     expect(RELOAD_FAILED).toMatch(/[\u0590-\u05FF]/)
     expect(RELOAD_FAILED).toContain('נשמר')
+    expect(reloadFailedText(true)).toBe(RELOAD_FAILED)
+  })
+
+  it('does not claim a change was kept when nothing was saved (auto-detect found no faces)', () => {
+    const text = reloadFailedText(false)
+    expect(text).toMatch(/[\u0590-\u05FF]/)
+    expect(text).not.toContain('נשמר')
   })
 })
 
