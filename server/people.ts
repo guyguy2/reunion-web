@@ -101,13 +101,13 @@ function cleanX(value: string): string {
 
 /** "@handle", "instagram.com/handle" or a share link with "?igsh=..." all become the bare handle. */
 function cleanInstagram(value: string): string {
-  const handle = value.replace(/^(https?:\/\/)?(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '')
+  const handle = value.replace(/^(https?:\/\/)?((www|m)\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '')
   if (!/^[A-Za-z0-9._]{1,30}$/.test(handle)) throw new Error('שם המשתמש באינסטגרם לא תקין')
   return handle
 }
 
-const FLAG_ON = ['1', 'true', 'yes', 'כן']
-const FLAG_OFF = ['0', 'false', 'no', 'לא', '']
+const FLAG_ON = ['1', 'true', 'yes', 'y', 'on', 'כן']
+const FLAG_OFF = ['0', 'false', 'no', 'n', 'off', 'לא', '']
 
 /** JSON bodies send booleans or numbers; CSV cells arrive as text, where "0" and "no" must mean off. */
 function parseFlag(raw: unknown, rawKey: string): number {

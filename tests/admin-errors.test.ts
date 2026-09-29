@@ -345,3 +345,37 @@ describe('duplicate tapes and videos', () => {
     expect(db.prepare(`SELECT title FROM videos WHERE external_id = 'dupClip0002'`).all()).toEqual([{ title: 'Got there first' }])
   })
 })
+
+describe('instagram handles and flag words', () => {
+  const instagram = (value: string) => parsePersonInput({ instagram: value }, { admin: false }).instagram
+  const flag = (value: string) => parsePersonInput({ show_email: value }, { admin: true }).show_email
+
+  it('keeps only the handle from a mobile link, with or without https', () => {
+    expect(instagram('m.instagram.com/johndoe')).toBe('johndoe')
+    expect(instagram('https://m.instagram.com/johndoe/?igsh=MTIz')).toBe('johndoe')
+    expect(instagram('HTTPS://M.Instagram.com/john.doe_1')).toBe('john.doe_1')
+  })
+
+  it('still reads https and www links', () => {
+    expect(instagram('https://instagram.com/johndoe')).toBe('johndoe')
+    expect(instagram('https://www.instagram.com/johndoe/')).toBe('johndoe')
+  })
+
+  it('reads y, yes, on, true and 1 as on, in any case', () => {
+    for (const on of ['y', 'Y', 'yes', 'YES', 'on', 'On', 'ON', 'true', 'True', '1']) expect(flag(on), on).toBe(1)
+  })
+
+  it('reads n, no, off, false and 0 as off, in any case', () => {
+    for (const off of ['n', 'N', 'no', 'NO', 'off', 'Off', 'OFF', 'false', 'FALSE', '0']) expect(flag(off), off).toBe(0)
+  })
+
+  it('imports on, off, y and n from a CSV', async () => {
+    const csv = 'name,show_email,in_memoriam\nFlagword One,off,y\nFlagword Two,ON,n\n'
+    const res = await app.request('/api/admin/import-csv', { method: 'POST', headers: { Cookie: admin }, body: csv })
+    expect(await res.json()).toEqual({ added: 2, skipped: [] })
+    expect(db.prepare(`SELECT name, show_email, in_memoriam FROM people WHERE name LIKE 'Flagword %' ORDER BY name`).all()).toEqual([
+      { name: 'Flagword One', show_email: 0, in_memoriam: 1 },
+      { name: 'Flagword Two', show_email: 1, in_memoriam: 0 },
+    ])
+  })
+})
