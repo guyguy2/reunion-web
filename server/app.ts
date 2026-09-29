@@ -329,7 +329,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   })
 
   // Signing in on another phone or computer with the personal code. Each device gets its own key,
-  // so signing in here never logs out the others. Wrong guesses are limited per device and per profile.
+  // so signing in here never logs out the others. Wrong guesses are limited per address and per profile.
   app.post('/api/people/:id/login', async (c) => {
     const person = getPerson(db, Number(c.req.param('id')))
     // Once a profile is blocked, each further wrong guess blocks it for twice as long (createLockout).
@@ -563,7 +563,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     const body = await readJson(c)
     let personId: number
     if (body.personId != null) {
-      if (!getPerson(db, Number(body.personId))) return c.json({ error: 'Unknown person' }, 400)
+      if (!getPerson(db, Number(body.personId))) return c.json({ error: 'הפרופיל לא נמצא' }, 400)
       personId = Number(body.personId)
     } else {
       const open = db.prepare('SELECT id FROM tags WHERE id = ? AND person_id IS NULL').get(tagId)
@@ -598,7 +598,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     return sendFile(c, path.join(config.dataDir, 'crops'), name, 'private, max-age=31536000, immutable')
   })
 
-  app.route('/api/admin', adminRoutes(config, db))
+  app.route('/api/admin', adminRoutes(config, db, { clearPinLockout: (personId) => pinLockout.clear(`pin:${personId}`) }))
 
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404))
 
@@ -610,9 +610,10 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     } catch {
       return c.notFound()
     }
-    const isAsset = rel.startsWith('assets/')
+    // A built file that is not there is a 404. Sent as the page instead, it would be cached for a year under that name.
+    if (rel.startsWith('assets/')) return sendFile(c, config.webDir, rel, 'public, max-age=31536000, immutable')
     const file = fs.existsSync(path.join(config.webDir, rel)) && path.extname(rel) ? rel : 'index.html'
-    return sendFile(c, config.webDir, file, isAsset ? 'public, max-age=31536000, immutable' : 'no-cache')
+    return sendFile(c, config.webDir, file, 'no-cache')
   })
 
   return app

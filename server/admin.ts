@@ -17,7 +17,7 @@ function parseBox(body: Record<string, unknown>) {
   return box
 }
 
-export function adminRoutes(config: Config, db: Db) {
+export function adminRoutes(config: Config, db: Db, hooks?: { clearPinLockout(personId: number): void }) {
   const admin = new Hono<AppEnv>()
   admin.use('*', requireAdmin)
 
@@ -59,6 +59,8 @@ export function adminRoutes(config: Config, db: Db) {
     db.prepare('UPDATE people SET claimed_at = NULL, edit_token_hash = NULL, pin_hash = NULL WHERE id = ?').run(id)
     db.prepare('DELETE FROM device_tokens WHERE person_id = ?').run(id)
     db.prepare('DELETE FROM recovery_tokens WHERE person_id = ?').run(id)
+    // The wrong guesses at the old code go too, so they do not lock out the code the owner picks next.
+    hooks?.clearPinLockout(id)
     return c.json({ ok: true })
   })
 

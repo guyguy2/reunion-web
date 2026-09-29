@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import sharp from 'sharp'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { createApp } from '../server/app.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
@@ -55,9 +55,6 @@ let admin: string
 let scene93: number
 let scene96: number
 let kid93: number
-let kid96: number
-let teacher: number
-let named: number
 let alreadyHere: number
 
 const roster: RosterFile = {
@@ -96,12 +93,40 @@ beforeAll(async () => {
   scene93 = addScene('1993 - junior high')
   scene96 = addScene('1996 - graduation')
   kid93 = insertTag(db, scene93, { x: 100, y: 100, w: 50, h: 60 }, null)
-  kid96 = insertTag(db, scene96, { x: 300, y: 300, w: 50, h: 60 }, null)
-  teacher = insertTag(db, scene96, { x: 500, y: 100, w: 50, h: 60 }, null)
+  // The other faces the roster file names, for the tests that import it into these two pictures.
+  insertTag(db, scene96, { x: 300, y: 300, w: 50, h: 60 }, null)
+  insertTag(db, scene96, { x: 500, y: 100, w: 50, h: 60 }, null)
   // A poster-style name, so only the claim keeps the file from renaming it.
   alreadyHere = insertPerson(db, { name: 'ס. אחר', claimed_at: '2026-09-18T00:00:00Z' })
-  named = insertTag(db, scene96, { x: 700, y: 100, w: 50, h: 60 }, alreadyHere)
+  insertTag(db, scene96, { x: 700, y: 100, w: 50, h: 60 }, alreadyHere)
 })
+
+/**
+ * Two pictures of their own with the faces `roster` names, one already named by a claimed classmate, and the file to
+ * import into them. For the tests that check what a first import does, so none depends on another test's import.
+ * The pictures, their faces and the profiles on them are deleted when the test ends.
+ */
+function freshPictures() {
+  // Years no other picture here has, so the file's first picture, whose title is not here, is taken by year.
+  const junior = addScene('1983 - junior high')
+  const graduation = addScene('1986 - graduation')
+  const kidJunior = insertTag(db, junior, { x: 100, y: 100, w: 50, h: 60 }, null)
+  const kidGraduation = insertTag(db, graduation, { x: 300, y: 300, w: 50, h: 60 }, null)
+  const principal = insertTag(db, graduation, { x: 500, y: 100, w: 50, h: 60 }, null)
+  // A poster-style name, so only the claim keeps the file from renaming it.
+  const classmate = insertPerson(db, { name: 'ס. אחר', claimed_at: '2026-09-18T00:00:00Z' })
+  const named = insertTag(db, graduation, { x: 700, y: 100, w: 50, h: 60 }, classmate)
+  const file: RosterFile = {
+    ...roster,
+    scenes: [{ ...roster.scenes[0], year: 1983 }, { ...roster.scenes[1], title: '1986 - graduation', year: 1986 }],
+  }
+  onTestFinished(() => {
+    const people = db.prepare('SELECT DISTINCT person_id FROM tags WHERE scene_id IN (?, ?) AND person_id IS NOT NULL').all(junior, graduation) as { person_id: number }[]
+    db.prepare('DELETE FROM scenes WHERE id IN (?, ?)').run(junior, graduation)
+    for (const { person_id } of people) db.prepare('DELETE FROM people WHERE id = ?').run(person_id)
+  })
+  return { file, graduation, kidJunior, kidGraduation, principal, named, classmate }
+}
 
 afterAll(() => fs.rmSync(dataDir, { recursive: true, force: true }))
 
@@ -121,22 +146,25 @@ describe('roster import', () => {
   })
 
   it('matches faces by picture and position, and one person across the years becomes one profile', async () => {
-    const res = await app.request('/api/admin/roster/import', json(admin, roster))
+    const { file, kidJunior, kidGraduation, principal } = freshPictures()
+    const res = await app.request('/api/admin/roster/import', json(admin, file))
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ facesMatched: 4, facesUnmatched: 1, peopleAdded: 1, peopleUpdated: 1, namesKept: 1 })
 
-    const personId = tagRow(kid93).person_id as number
+    const personId = tagRow(kidJunior).person_id as number
     expect(personId).toBeTruthy()
-    expect(tagRow(kid96).person_id).toBe(personId)
+    expect(tagRow(kidGraduation).person_id).toBe(personId)
     expect(getPerson(db, personId)).toMatchObject({ name: 'י. ישראלי', gender: 'f' })
-    expect(tagRow(kid93)).toMatchObject({ caption: 'י. ישראלי', class_label: "ט'-2", is_staff: 0 })
-    expect(tagRow(kid96)).toMatchObject({ class_label: 'י"ב-3' })
-    expect(tagRow(teacher)).toMatchObject({ caption: 'The Principal', is_staff: 1, person_id: null })
+    expect(tagRow(kidJunior)).toMatchObject({ caption: 'י. ישראלי', class_label: "ט'-2", is_staff: 0 })
+    expect(tagRow(kidGraduation)).toMatchObject({ class_label: 'י"ב-3' })
+    expect(tagRow(principal)).toMatchObject({ caption: 'The Principal', is_staff: 1, person_id: null })
   })
 
   it('keeps a name a classmate already gave, and never renames a claimed profile', () => {
-    expect(tagRow(named)).toMatchObject({ person_id: alreadyHere, class_label: 'י"ב-1' })
-    expect(getPerson(db, alreadyHere)).toMatchObject({ name: 'ס. אחר', gender: 'm' })
+    const { file, named, classmate } = freshPictures()
+    importRoster(db, file)
+    expect(tagRow(named)).toMatchObject({ person_id: classmate, class_label: 'י"ב-1' })
+    expect(getPerson(db, classmate)).toMatchObject({ name: 'ס. אחר', gender: 'm' })
   })
 
   it('never replaces a name somebody typed with a poster caption, but a corrected caption does replace a caption', () => {
@@ -324,15 +352,17 @@ describe('roster import', () => {
 
 describe('staff faces', () => {
   it('are left out of the yearbook but shown to the roster tool', async () => {
+    const { file, graduation, kidGraduation, principal } = freshPictures()
+    importRoster(db, file)
     const scenes = (await (await app.request('/api/scenes', { headers: { Cookie: member } })).json()) as { id: number; year: number; tags: { id: number; classLabel: string }[] }[]
-    const s96 = scenes.find((s) => s.id === scene96)!
-    expect(s96.year).toBe(1996)
-    expect(s96.tags.map((t) => t.id)).not.toContain(teacher)
-    expect(s96.tags.find((t) => t.id === kid96)!.classLabel).toBe('י"ב-3')
+    const s86 = scenes.find((s) => s.id === graduation)!
+    expect(s86.year).toBe(1986)
+    expect(s86.tags.map((t) => t.id)).not.toContain(principal)
+    expect(s86.tags.find((t) => t.id === kidGraduation)!.classLabel).toBe('י"ב-3')
 
     expect((await app.request('/api/admin/scenes', { headers: { Cookie: member } })).status).toBe(403)
     const all = (await (await app.request('/api/admin/scenes', { headers: { Cookie: admin } })).json()) as { id: number; tags: { id: number; staff: boolean }[] }[]
-    expect(all.find((s) => s.id === scene96)!.tags.find((t) => t.id === teacher)!.staff).toBe(true)
+    expect(all.find((s) => s.id === graduation)!.tags.find((t) => t.id === principal)!.staff).toBe(true)
   })
 
   it('are not counted as faces waiting for a name', async () => {
@@ -498,7 +528,7 @@ describe('fixing the roster', () => {
   })
 
   it('lets organizers set a gender, and rejects anything else', async () => {
-    const id = tagRow(kid93).person_id as number
+    const id = insertPerson(db, { name: 'Tal Adler' })
     expect((await app.request(`/api/admin/people/${id}`, json(admin, { gender: 'm' }, 'PATCH'))).status).toBe(200)
     expect(getPerson(db, id)!.gender).toBe('m')
     expect((await app.request(`/api/admin/people/${id}`, json(admin, { gender: 'x' }, 'PATCH'))).status).toBe(400)

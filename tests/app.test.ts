@@ -121,6 +121,14 @@ describe('built client', () => {
     expect(await res.text()).toBe(APP_JS)
   })
 
+  it('answers a built file that is not there with 404, not the page with a long cache', async () => {
+    // What a browser still holding the page from before a deploy asks for.
+    const res = await app.request('/assets/index-old999.js')
+    expect(res.status).toBe(404)
+    expect(res.headers.get('cache-control')).not.toBe('public, max-age=31536000, immutable')
+    expect(await res.text()).not.toBe(INDEX_HTML)
+  })
+
   it('does not serve files outside the built client, even to a visitor without the passcode', async () => {
     // The client folder sits inside the data folder, one level below the database.
     expect(fs.existsSync(path.join(config.webDir, '..', 'reunion.db'))).toBe(true)
