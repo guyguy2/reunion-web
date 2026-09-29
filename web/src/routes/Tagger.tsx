@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import OpenSeadragon from 'openseadragon'
-import { createOSDAnnotator, type ImageAnnotation, type OpenSeadragonAnnotator } from '@annotorious/openseadragon'
+import { createOSDAnnotator, UserSelectAction, type ImageAnnotation, type OpenSeadragonAnnotator } from '@annotorious/openseadragon'
 import '@annotorious/openseadragon/annotorious-openseadragon.css'
 import { api, faceUrl, matchesPerson, type Scene, type Tag } from '../api.ts'
 import { useStore } from '../store.tsx'
@@ -27,11 +27,17 @@ function boxOf(annotation: ImageAnnotation) {
 }
 
 /** Organizer tool: draw, move and delete face boxes, auto-detect faces, and put names on them. */
-export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () => void }) {
+export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; onClose: () => void }) {
   const { people, personById, reload } = useStore()
+  // The store has the members' copy of the scene, which leaves out staff faces. The organizers' copy has them,
+  // so they are drawn and auto-detect doesn't box them again.
+  const [fullScene, setFullScene] = useState<Scene | null>(null)
+  const scene = fullScene ?? memberScene
   const host = useRef<HTMLDivElement>(null)
   const anno = useRef<OpenSeadragonAnnotator | null>(null)
   const owners = useRef(new Map<string, number | null>())
+  const staffIds = useRef(new Set<string>())
+  const tags = useRef(scene.tags)
   const [drawing, setDrawing] = useState(false)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [query, setQuery] = useState('')
@@ -39,8 +45,22 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
   const [message, setMessage] = useState('')
 
   const selected = scene.tags.find((t) => t.id === selectedId) ?? null
+  const faces = scene.tags.filter((t) => !t.staff).length
   const named = scene.tags.filter((t) => t.personId != null).length
   owners.current = new Map(scene.tags.map((t) => [String(t.id), t.personId]))
+  staffIds.current = new Set(scene.tags.filter((t) => t.staff).map((t) => String(t.id)))
+  tags.current = scene.tags
+
+  const loadScene = useCallback(async () => {
+    const next = (await api<Scene[]>('/api/admin/scenes')).find((s) => s.id === memberScene.id)
+    if (next) setFullScene(next)
+  }, [memberScene.id])
+  // After every change: this scene with its staff faces, and the store, for the people and the counts elsewhere.
+  const refresh = () => Promise.all([loadScene(), reload()])
+
+  useEffect(() => {
+    loadScene().catch((err) => setMessage((err as Error).message))
+  }, [loadScene])
 
   useEffect(() => {
     const viewer = OpenSeadragon({
@@ -53,7 +73,10 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
     })
     const annotator = createOSDAnnotator(viewer, {
       drawingEnabled: false,
+      // Staff faces are drawn grey and can't be picked: they stay out of the yearbook and are handled in the roster tool.
+      userSelectAction: (annotation) => (staffIds.current.has(annotation.id) ? UserSelectAction.NONE : UserSelectAction.EDIT),
       style: (annotation) => {
+        if (staffIds.current.has(annotation.id)) return { stroke: '#9ca3af', strokeWidth: 2, fill: '#9ca3af', fillOpacity: 0.12 }
         const isNamed = owners.current.get(annotation.id) != null
         return { stroke: isNamed ? '#14b8a6' : '#ec4899', strokeWidth: 2, fill: isNamed ? '#14b8a6' : '#ec4899', fillOpacity: 0.12 }
       },
@@ -61,14 +84,18 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
     annotator.setDrawingTool('rectangle')
     anno.current = annotator
 
-    annotator.on('createAnnotation', async (annotation) => {
-      const tag = await api<Tag>(`/api/admin/scenes/${scene.id}/tags`, { json: boxOf(annotation as ImageAnnotation) })
-      await reload()
-      setSelectedId(tag.id)
-    })
-    annotator.on('updateAnnotation', async (annotation) => {
-      await api(`/api/admin/tags/${annotation.id}`, { method: 'PATCH', json: boxOf(annotation as ImageAnnotation) })
-      await reload()
+    // A box that fails to save is taken back off the canvas, so what's drawn is what the server has.
+    const rollback = () => anno.current?.setAnnotations(tags.current.map(toAnnotation), true)
+    annotator.on('createAnnotation', (annotation) =>
+      act(async () => {
+        const tag = await api<Tag>(`/api/admin/scenes/${scene.id}/tags`, { json: boxOf(annotation as ImageAnnotation) })
+        setSelectedId(tag.id)
+      }, rollback),
+    )
+    annotator.on('updateAnnotation', (annotation) => {
+      // A box still being created has no server id yet; the reload after creating it redraws it.
+      if (!owners.current.has(annotation.id)) return
+      act(() => api(`/api/admin/tags/${annotation.id}`, { method: 'PATCH', json: boxOf(annotation as ImageAnnotation) }), rollback)
     })
     annotator.on('selectionChanged', (annotations) => {
       const id = Number(annotations[0]?.id)
@@ -92,13 +119,14 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
     anno.current?.setDrawingEnabled(drawing)
   }, [drawing])
 
-  async function act(action: () => Promise<unknown>) {
+  async function act(action: () => Promise<unknown>, onError?: () => void) {
     setMessage('')
     try {
       await action()
-      await reload()
+      await refresh()
     } catch (err) {
       setMessage((err as Error).message)
+      onError?.()
     }
   }
 
@@ -108,7 +136,7 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
     try {
       const boxes = await detectFaces(scene.dzi.replace(/scene\.dzi$/, 'scene.jpg'), scene.tags, setProgress)
       if (boxes.length) await api(`/api/admin/scenes/${scene.id}/tags/batch`, { json: { boxes } })
-      await reload()
+      await refresh()
       setMessage(`נמצאו ${boxes.length} פנים חדשות. בדקו את התמונה ותקנו ידנית מה שפוספס.`)
     } catch (err) {
       setMessage(`זיהוי הפנים נכשל: ${(err as Error).message}`)
@@ -135,7 +163,7 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
           </button>
         </div>
         <p className="lcd text-lg">
-          {scene.tags.length} פנים / {named} זוהו
+          {faces} פנים / {named} זוהו
         </p>
 
         <div className="grid grid-cols-2 gap-2">
@@ -148,7 +176,7 @@ export default function Tagger({ scene, onClose }: { scene: Scene; onClose: () =
         </div>
 
         <div className="space-y-2">
-          <button className="btn w-full" disabled={progress !== null} onClick={autoDetect}>
+          <button className="btn w-full" disabled={progress !== null || !fullScene} onClick={autoDetect}>
             {progress === null ? 'זיהוי פנים אוטומטי' : `סורק... ${Math.round(progress * 100)}%`}
           </button>
           <p className="text-xs opacity-70">רץ בדפדפן הזה. מוסיף מסגרת לכל פנים שעדיין אין להן מסגרת. אחר כך הבוגרים מוסיפים שמות.</p>
