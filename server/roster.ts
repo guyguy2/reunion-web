@@ -71,14 +71,14 @@ function overlap(a: { x: number; y: number; w: number; h: number }, b: { x: numb
 
 export function parseRoster(body: unknown): RosterFile {
   const file = body as RosterFile | null
-  if (!file || file.version !== 1 || !Array.isArray(file.people) || !Array.isArray(file.scenes)) throw new Error('This is not a roster file')
+  if (!file || file.version !== 1 || !Array.isArray(file.people) || !Array.isArray(file.scenes)) throw new Error('זה לא קובץ רשימה')
   for (const p of file.people) {
-    if (typeof p.key !== 'string' || typeof p.name !== 'string' || !p.name.trim()) throw new Error('Every person needs a key and a name')
-    if (p.gender != null && p.gender !== 'm' && p.gender !== 'f') throw new Error('Invalid gender value')
+    if (typeof p.key !== 'string' || typeof p.name !== 'string' || !p.name.trim()) throw new Error('לכל אדם בקובץ צריך מפתח ושם')
+    if (p.gender != null && p.gender !== 'm' && p.gender !== 'f') throw new Error('יש בקובץ ערך בן/בת לא תקין')
   }
   for (const s of file.scenes) {
-    if (!Array.isArray(s.faces) || !(s.width > 0)) throw new Error('Invalid picture in roster file')
-    for (const f of s.faces) if (![f.x, f.y, f.w, f.h].every(Number.isFinite)) throw new Error('Invalid face box in roster file')
+    if (!Array.isArray(s.faces) || !(s.width > 0)) throw new Error('יש בקובץ תמונה לא תקינה')
+    for (const f of s.faces) if (![f.x, f.y, f.w, f.h].every(Number.isFinite)) throw new Error('יש בקובץ מיקום פנים לא תקין')
   }
   return file
 }
@@ -200,8 +200,8 @@ function removePhotoFiles(dataDir: string, paths: string[]) {
  * own photos stay first; the other one's fill any free places up to the limit, and the files of the rest are deleted.
  */
 export function mergePeople(db: Db, dataDir: string, from: PersonRow, into: PersonRow) {
-  if (from.id === into.id) throw new Error('Cannot merge a profile into itself')
-  if (from.claimed_at) throw new Error('A claimed profile cannot be merged away. Merge the other one into it.')
+  if (from.id === into.id) throw new Error('אי אפשר למזג פרופיל לתוך עצמו')
+  if (from.claimed_at) throw new Error('אי אפשר למזג פרופיל שיש לו בעלים לתוך פרופיל אחר. מזגו את השני לתוכו.')
   const dropped: string[] = []
   db.exec('BEGIN')
   try {
@@ -242,7 +242,7 @@ export function mergePeople(db: Db, dataDir: string, from: PersonRow, into: Pers
 
 /** Marks someone as staff: their faces are hidden and keep the name as a caption, and the unclaimed profile goes. */
 export function markPersonStaff(db: Db, dataDir: string, person: PersonRow) {
-  if (person.claimed_at) throw new Error('A claimed profile cannot be marked as staff')
+  if (person.claimed_at) throw new Error('אי אפשר לסמן כצוות פרופיל שיש לו בעלים')
   let photos: string[] = []
   db.exec('BEGIN')
   try {

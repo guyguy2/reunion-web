@@ -8,11 +8,12 @@ import { addGroupScene, deleteScene, getScene, insertTag, listScenes, rebuildWal
 import { saveCredits } from './credits.ts'
 import { loadDemoData } from './demo.ts'
 import { listFeedback } from './feedback.ts'
+import { readJson } from './http.ts'
 import { exportRoster, importRoster, markPersonStaff, mergePeople, parseRoster } from './roster.ts'
 
 function parseBox(body: Record<string, unknown>) {
   const box = { x: Number(body.x), y: Number(body.y), w: Number(body.w), h: Number(body.h) }
-  if (!Object.values(box).every(Number.isFinite) || box.w <= 0 || box.h <= 0) throw new Error('Invalid box')
+  if (!Object.values(box).every(Number.isFinite) || box.w <= 0 || box.h <= 0) throw new Error('מיקום הפנים לא תקין')
   return box
 }
 
@@ -23,7 +24,7 @@ export function adminRoutes(config: Config, db: Db) {
   // ---- People ----
   admin.post('/people', async (c) => {
     try {
-      const fields = parsePersonInput(await c.req.json().catch(() => null), { admin: true })
+      const fields = parsePersonInput(await readJson(c), { admin: true })
       if (!fields.name) throw new Error('חובה למלא שם')
       return c.json(serializePerson(getPerson(db, insertPerson(db, fields))!, 'full'), 201)
     } catch (err) {
@@ -35,7 +36,9 @@ export function adminRoutes(config: Config, db: Db) {
     const id = Number(c.req.param('id'))
     if (!getPerson(db, id)) return c.json({ error: 'Not found' }, 404)
     try {
-      updatePerson(db, id, parsePersonInput(await c.req.json().catch(() => null), { admin: true }))
+      const fields = parsePersonInput(await readJson(c), { admin: true })
+      if (Object.keys(fields).length === 0) throw new Error('אין מה לעדכן')
+      updatePerson(db, id, fields)
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
@@ -62,9 +65,11 @@ export function adminRoutes(config: Config, db: Db) {
   // Two profiles that turned out to be one person, e.g. a surname spelled two ways on two posters.
   admin.post('/people/:id/merge', async (c) => {
     const from = getPerson(db, Number(c.req.param('id')))
-    const body = await c.req.json().catch(() => ({}))
+    if (!from) return c.json({ error: 'Not found' }, 404)
+    const body = await readJson(c)
+    if (body.intoId == null || !Number.isInteger(Number(body.intoId))) return c.json({ error: 'לא נבחר פרופיל למיזוג' }, 400)
     const into = getPerson(db, Number(body.intoId))
-    if (!from || !into) return c.json({ error: 'Not found' }, 404)
+    if (!into) return c.json({ error: 'Not found' }, 404)
     try {
       mergePeople(db, config.dataDir, from, into)
     } catch (err) {
@@ -151,10 +156,10 @@ export function adminRoutes(config: Config, db: Db) {
   admin.post('/scenes/:id/tags', async (c) => {
     const scene = getScene(db, Number(c.req.param('id')))
     if (!scene) return c.json({ error: 'Not found' }, 404)
-    const body = await c.req.json().catch(() => ({}))
+    const body = await readJson(c)
     try {
       const personId = body.personId == null ? null : Number(body.personId)
-      if (personId !== null && !getPerson(db, personId)) throw new Error('Unknown person')
+      if (personId !== null && !getPerson(db, personId)) throw new Error('הפרופיל הזה לא נמצא')
       const id = insertTag(db, scene.id, parseBox(body), personId)
       return c.json(serializeTag(db.prepare('SELECT * FROM tags WHERE id = ?').get(id) as unknown as TagRow), 201)
     } catch (err) {
@@ -166,8 +171,8 @@ export function adminRoutes(config: Config, db: Db) {
   admin.post('/scenes/:id/tags/batch', async (c) => {
     const scene = getScene(db, Number(c.req.param('id')))
     if (!scene) return c.json({ error: 'Not found' }, 404)
-    const body = await c.req.json().catch(() => ({}))
-    if (!Array.isArray(body.boxes) || body.boxes.length > 2000) return c.json({ error: 'Invalid boxes' }, 400)
+    const body = await readJson(c)
+    if (!Array.isArray(body.boxes) || body.boxes.length > 2000) return c.json({ error: 'רשימת הפנים לא תקינה' }, 400)
     try {
       const boxes = body.boxes.map(parseBox)
       db.exec('BEGIN')
@@ -190,11 +195,12 @@ export function adminRoutes(config: Config, db: Db) {
     const id = Number(c.req.param('id'))
     const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(id) as unknown as TagRow | undefined
     if (!tag) return c.json({ error: 'Not found' }, 404)
-    const body = await c.req.json().catch(() => ({}))
+    const body = await readJson(c)
     try {
+      if (!['x', 'personId', 'caption', 'classLabel', 'staff'].some((key) => key in body)) throw new Error('אין מה לעדכן')
       const box = 'x' in body ? parseBox(body) : tag
       const personId = 'personId' in body ? (body.personId == null ? null : Number(body.personId)) : tag.person_id
-      if (personId !== null && !getPerson(db, personId)) throw new Error('Unknown person')
+      if (personId !== null && !getPerson(db, personId)) throw new Error('הפרופיל הזה לא נמצא')
       const text = (key: 'caption' | 'classLabel', current: string | null) =>
         key in body ? (typeof body[key] === 'string' && body[key].trim() ? body[key].trim().slice(0, 80) : null) : current
       const staff = 'staff' in body ? (body.staff ? 1 : 0) : tag.is_staff
@@ -213,7 +219,7 @@ export function adminRoutes(config: Config, db: Db) {
     const id = Number(c.req.param('id'))
     const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(id) as unknown as TagRow | undefined
     if (!tag) return c.json({ error: 'Not found' }, 404)
-    const body = await c.req.json().catch(() => ({}))
+    const body = await readJson(c)
     try {
       const fields = parsePersonInput({ name: body.name ?? tag.caption, gender: body.gender ?? null }, { admin: true })
       if (!fields.name) throw new Error('חובה למלא שם')
@@ -322,7 +328,7 @@ export function adminRoutes(config: Config, db: Db) {
 
   admin.post('/roster/import', async (c) => {
     try {
-      return c.json(importRoster(db, parseRoster(await c.req.json().catch(() => null))))
+      return c.json(importRoster(db, parseRoster(await readJson(c))))
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }

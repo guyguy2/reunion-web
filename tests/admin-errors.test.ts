@@ -1,0 +1,167 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import sharp from 'sharp'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { createApp } from '../server/app.ts'
+import type { Config } from '../server/config.ts'
+import { saveCredits } from '../server/credits.ts'
+import { openDb } from '../server/db.ts'
+import { addPhoto, getPerson, insertPerson, listPhotos, MAX_PHOTOS_PER_KIND, parsePersonInput } from '../server/people.ts'
+import { listQuotes, REACTIONS, reactToQuote } from '../server/quotes.ts'
+import { insertTag } from '../server/scenes.ts'
+import { addTape } from '../server/tapes.ts'
+import { addVideo } from '../server/videos.ts'
+
+const dirs: string[] = []
+function tempDir() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-admin-errors-test-'))
+  dirs.push(dir)
+  return dir
+}
+
+const dataDir = tempDir()
+const config: Config = {
+  dataDir,
+  classPasscode: 'class-pass',
+  adminPasscode: 'admin-pass',
+  sessionSecret: 'test-secret',
+  port: 0,
+  webDir: path.join(dataDir, 'web'),
+  secureCookies: false,
+}
+const db = openDb(dataDir)
+const app = createApp(config, db)
+
+async function login(passcode: string, ip: string, target = app): Promise<string> {
+  const res = await target.request('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-real-ip': ip },
+    body: JSON.stringify({ passcode }),
+  })
+  expect(res.status).toBe(200)
+  return res.headers.get('set-cookie')!.split(';')[0]
+}
+
+function json(method: string, body: unknown, headers: Record<string, string>) {
+  return { method, headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }
+}
+
+/** A 400 (or other status) whose message is Hebrew text written for people, not a stack trace or a JS error. */
+async function expectHebrewError(res: Response, status = 400): Promise<string> {
+  expect(res.status).toBe(status)
+  const { error } = (await res.json()) as { error: string }
+  expect(error).toMatch(/[א-ת]/)
+  expect(error).not.toMatch(/Cannot|TypeError|reading|undefined|null|Invalid|Unknown/)
+  return error
+}
+
+const picture = () => sharp({ create: { width: 60, height: 60, channels: 3, background: '#14b8a6' } }).png().toBuffer()
+const count = (table: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
+const tagRow = (id: number) => db.prepare('SELECT * FROM tags WHERE id = ?').get(id)
+
+let admin: string
+
+beforeAll(async () => {
+  admin = await login('admin-pass', '10.61.0.1')
+})
+
+afterAll(() => {
+  for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true })
+})
+
+describe('admin JSON bodies that are null or a list', () => {
+  let person: number
+  let scene: number
+  let tag: number
+  let uncaptioned: number
+
+  beforeAll(() => {
+    person = insertPerson(db, { name: 'Jenny Carter', city: 'Haifa' })
+    scene = Number(
+      db.prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path) VALUES ('bodies', 'Bodies', 'group', 600, 400, 'scenes/bodies')`).run()
+        .lastInsertRowid,
+    )
+    tag = insertTag(db, scene, { x: 10, y: 10, w: 40, h: 50 }, person)
+    db.prepare('UPDATE tags SET caption = ? WHERE id = ?').run('י. ישראלי', tag)
+    uncaptioned = insertTag(db, scene, { x: 100, y: 10, w: 40, h: 50 }, null)
+  })
+
+  const routes = (): [method: string, url: string][] => [
+    ['POST', '/api/admin/people'],
+    ['PATCH', `/api/admin/people/${person}`],
+    ['POST', `/api/admin/people/${person}/merge`],
+    ['POST', `/api/admin/scenes/${scene}/tags`],
+    ['POST', `/api/admin/scenes/${scene}/tags/batch`],
+    ['PATCH', `/api/admin/tags/${tag}`],
+    ['POST', `/api/admin/tags/${uncaptioned}/new-person`],
+    ['POST', '/api/admin/roster/import'],
+  ]
+
+  for (const body of [null, []]) {
+    it(`answers ${JSON.stringify(body)} with a Hebrew 400 on every route that reads JSON, and changes nothing`, async () => {
+      const before = { people: count('people'), tags: count('tags'), person: getPerson(db, person), tag: tagRow(tag), uncaptioned: tagRow(uncaptioned) }
+      for (const [method, url] of routes()) {
+        const res = await app.request(url, json(method, body, { Cookie: admin }))
+        await expectHebrewError(res).catch((err) => {
+          throw new Error(`${method} ${url}: ${(err as Error).message}`)
+        })
+      }
+      expect({ people: count('people'), tags: count('tags'), person: getPerson(db, person), tag: tagRow(tag), uncaptioned: tagRow(uncaptioned) }).toEqual(before)
+    })
+  }
+
+  it('still edits a face and a profile when the body names a field', async () => {
+    const face = await app.request(`/api/admin/tags/${tag}`, json('PATCH', { classLabel: "ט'-3" }, { Cookie: admin }))
+    expect(face.status).toBe(200)
+    expect(await face.json()).toMatchObject({ caption: 'י. ישראלי', classLabel: "ט'-3", personId: person })
+    const profile = await app.request(`/api/admin/people/${person}`, json('PATCH', { nickname: 'Jen' }, { Cookie: admin }))
+    expect(profile.status).toBe(200)
+    expect(await profile.json()).toMatchObject({ name: 'Jenny Carter', nickname: 'Jen', city: 'Haifa' })
+  })
+
+  it('refuses a face box or a person that does not exist in Hebrew', async () => {
+    await expectHebrewError(await app.request(`/api/admin/scenes/${scene}/tags`, json('POST', { x: 1, y: 1, w: 0, h: 5 }, { Cookie: admin })))
+    await expectHebrewError(await app.request(`/api/admin/scenes/${scene}/tags`, json('POST', { x: 1, y: 1, w: 5, h: 5, personId: 999999 }, { Cookie: admin })))
+    await expectHebrewError(await app.request(`/api/admin/tags/${tag}`, json('PATCH', { personId: 999999 }, { Cookie: admin })))
+    await expectHebrewError(await app.request(`/api/admin/scenes/${scene}/tags/batch`, json('POST', { boxes: 'nope' }, { Cookie: admin })))
+    expect((tagRow(tag) as { person_id: number }).person_id).toBe(person)
+  })
+})
+
+describe('merging and marking staff', () => {
+  it('refuses to merge a profile into itself, in Hebrew', async () => {
+    const id = insertPerson(db, { name: 'Casey Morgan' })
+    await expectHebrewError(await app.request(`/api/admin/people/${id}/merge`, json('POST', { intoId: id }, { Cookie: admin })))
+    expect(getPerson(db, id)).toBeDefined()
+  })
+
+  it('refuses to merge away or mark as staff a claimed profile, in Hebrew', async () => {
+    const claimed = insertPerson(db, { name: 'Riley Brooks', claimed_at: '2026-09-18T00:00:00Z' })
+    const other = insertPerson(db, { name: 'ר. ברוקס' })
+    await expectHebrewError(await app.request(`/api/admin/people/${claimed}/merge`, json('POST', { intoId: other }, { Cookie: admin })))
+    await expectHebrewError(await app.request(`/api/admin/people/${claimed}/staff`, { method: 'POST', headers: { Cookie: admin } }))
+    expect(getPerson(db, claimed)).toBeDefined()
+    expect(getPerson(db, other)).toBeDefined()
+  })
+
+  it('asks for the profile to merge into when none is given', async () => {
+    const id = insertPerson(db, { name: 'Avery Lane' })
+    await expectHebrewError(await app.request(`/api/admin/people/${id}/merge`, json('POST', {}, { Cookie: admin })))
+    expect(getPerson(db, id)).toBeDefined()
+  })
+
+  it('keeps the plain not-found answer for a profile that does not exist', async () => {
+    const id = insertPerson(db, { name: 'Jordan Hale' })
+    const missingFrom = await app.request('/api/admin/people/999999/merge', json('POST', { intoId: id }, { Cookie: admin }))
+    expect(missingFrom.status).toBe(404)
+    expect(await missingFrom.json()).toEqual({ error: 'Not found' })
+    const missingInto = await app.request(`/api/admin/people/${id}/merge`, json('POST', { intoId: 999999 }, { Cookie: admin }))
+    expect(missingInto.status).toBe(404)
+    expect(await missingInto.json()).toEqual({ error: 'Not found' })
+    const missingStaff = await app.request('/api/admin/people/999999/staff', { method: 'POST', headers: { Cookie: admin } })
+    expect(missingStaff.status).toBe(404)
+    expect(await missingStaff.json()).toEqual({ error: 'Not found' })
+    expect(getPerson(db, id)).toBeDefined()
+  })
+})
