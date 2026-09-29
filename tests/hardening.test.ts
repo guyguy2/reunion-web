@@ -373,3 +373,48 @@ describe('sign-in link deadline', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM recovery_tokens WHERE person_id = ?').get(id)).toEqual({ n: 0 })
   })
 })
+
+describe('error messages', () => {
+  it('passes our own Hebrew message through, and answers anything else with a general one it logs', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const add = (text: string) => app.request('/api/quotes', json('POST', { text }, { Cookie: member }))
+
+    const empty = await add('')
+    expect(empty.status).toBe(400)
+    expect(await empty.json()).toEqual({ error: 'מה אמרו? כתבו את המשפט' })
+    expect(logged).not.toHaveBeenCalled()
+
+    db.exec(`CREATE TEMP TRIGGER quotes_fail BEFORE INSERT ON quotes BEGIN SELECT RAISE(ABORT, 'simulated database failure'); END`)
+    try {
+      const failed = await add('We will meet again')
+      expect(failed.status).toBe(400)
+      expect(await failed.json()).toEqual({ error: 'הבקשה לא תקינה' })
+    } finally {
+      db.exec('DROP TRIGGER quotes_fail')
+    }
+    expect(logged).toHaveBeenCalledTimes(1)
+    expect(logged.mock.calls[0].join(' ')).toContain('simulated database failure')
+  })
+})
+
+describe('profile photo upload errors', () => {
+  const upload = async (kind: string, file: File) => {
+    const created = await app.request('/api/people', json('POST', { name: 'Riley Brooks' }, { Cookie: member }))
+    const form = new FormData()
+    form.set('photo', file)
+    return app.request(`/api/me/photo/${kind}`, { method: 'POST', headers: { Cookie: member, 'x-edit-token': (await created.json()).token }, body: form })
+  }
+
+  it('names an unknown photo kind in Hebrew', async () => {
+    const res = await upload('later', new File(['not really a png'], 'fake.png', { type: 'image/png' }))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'סוג תמונה לא מוכר' })
+  })
+
+  it('says in Hebrew that bytes which only claim to be an image are not one', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await upload('now', new File(['not really a png'], 'fake.png', { type: 'image/png' }))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'הקובץ אינו תמונה תקינה' })
+  })
+})

@@ -67,6 +67,17 @@ async function readJson(c: Context): Promise<Record<string, unknown>> {
   return body !== null && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {}
 }
 
+const HEBREW = /[\u0590-\u05FF]/
+
+/** A 400 for an error thrown while handling a request. Our own messages are in Hebrew, written for the people using the
+ * site, and go out as they are. Anything else (a library's, the database's) is logged and answered with `fallback`. */
+function badRequest(c: Context, err: unknown, fallback = 'הבקשה לא תקינה') {
+  const message = err instanceof Error ? err.message : String(err)
+  if (HEBREW.test(message)) return c.json({ error: message }, 400)
+  console.error(`${c.req.method} ${c.req.path} refused: ${message}`)
+  return c.json({ error: fallback }, 400)
+}
+
 const MB = 1024 * 1024
 const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE
@@ -193,7 +204,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     try {
       return c.json(await addTape(db, await c.req.json().catch(() => null)), 201)
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
   })
 
@@ -209,7 +220,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     try {
       return c.json(await addVideo(db, await c.req.json().catch(() => null)), 201)
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
   })
 
@@ -228,7 +239,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     try {
       return c.json(reactToQuote(db, Number(c.req.param('id')), reactorOf(c), await c.req.json().catch(() => null)))
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
   })
 
@@ -236,7 +247,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     try {
       return c.json(addQuote(db, await c.req.json().catch(() => null)), 201)
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
   })
 
@@ -244,7 +255,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     try {
       return c.json(addQuoteComment(db, Number(c.req.param('id')), await c.req.json().catch(() => null)), 201)
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
   })
 
@@ -255,7 +266,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     try {
       return c.json(await addFeedback(db, await c.req.json().catch(() => null), sendFeedback), 201)
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
   })
 
@@ -280,7 +291,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
       if (!fields.name) throw new Error('חובה למלא שם')
       pinHash = pinFrom(body)
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
     const token = newEditToken()
     const id = insertPerson(db, { ...fields, claimed_at: new Date().toISOString(), edit_token_hash: sha256(token), pin_hash: pinHash })
@@ -295,7 +306,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
       pinHash = pinFrom(body)
       email = parsePersonInput({ email: (body as { email?: unknown } | null)?.email ?? null }, { admin: false }).email ?? null
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
     const token = newEditToken()
     // Single conditional UPDATE so two people cannot claim the same profile.
@@ -348,7 +359,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
       const sentTo = await sendSignInLink(db, person, mailer, config.publicUrl)
       return c.json({ sentTo })
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
   })
 
@@ -383,7 +394,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     try {
       updatePerson(db, me.id, { pin_hash: hashPin(typeof body.pin === 'string' ? body.pin : '') })
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
     return c.json(serializePerson(getPerson(db, me.id)!, 'full'))
   })
@@ -401,7 +412,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     try {
       recipient = sendNote(db, await c.req.json().catch(() => null), owner(c))
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
     if (!config.publicUrl) {
       console.error(`Note alert for person ${recipient.id} skipped: PUBLIC_URL is not set, so its links would have no address`)
@@ -439,7 +450,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     try {
       updatePerson(db, me.id, parsePersonInput(await c.req.json().catch(() => null), { admin: false }))
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 400)
+      return badRequest(c, err)
     }
     return c.json(serializePerson(getPerson(db, me.id)!, 'full'))
   })
@@ -448,11 +459,11 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     const me = owner(c)
     if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
     const kind = c.req.param('kind')
-    if (kind !== 'then' && kind !== 'now') return c.json({ error: 'Unknown photo kind' }, 400)
+    if (kind !== 'then' && kind !== 'now') return c.json({ error: 'סוג תמונה לא מוכר' }, 400)
     try {
       await addPhoto(db, config.dataDir, me.id, kind, await readImageField(c, 'photo', MAX_UPLOAD_BYTES))
     } catch (err) {
-      return c.json({ error: (err as Error).message || 'לא הצלחנו לקרוא את התמונה' }, 400)
+      return badRequest(c, err, 'הקובץ אינו תמונה תקינה')
     }
     return c.json(serializePerson(getPerson(db, me.id)!, 'full'))
   })
@@ -524,7 +535,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
         if (!fields.name) throw new Error('חובה למלא שם')
         personId = insertPerson(db, fields)
       } catch (err) {
-        return c.json({ error: (err as Error).message }, 400)
+        return badRequest(c, err)
       }
     }
     const result = db.prepare('UPDATE tags SET person_id = ? WHERE id = ? AND person_id IS NULL').run(personId, tagId)
