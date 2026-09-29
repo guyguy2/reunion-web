@@ -1,10 +1,11 @@
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { Hono } from 'hono'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../server/app.ts'
-import { clientKey, createLoginLimiter, createThrottle } from '../server/auth.ts'
+import { clientKey, createLoginLimiter, createThrottle, sha256 } from '../server/auth.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
 import { gmailRelayMailer, type Mailer } from '../server/email.ts'
@@ -252,6 +253,19 @@ describe('session cookie and passcode changes', () => {
 
     expect(await role(app, classCookie)).toBe('member')
     expect(await role(app, adminCookie)).toBe('admin')
+  })
+
+  it('carries the passcode only as a hash keyed with the session secret', async () => {
+    const payloadOf = (cookie: string) => {
+      const value = decodeURIComponent(cookie.slice('reunion_session='.length))
+      return value.slice(0, value.lastIndexOf('.'))
+    }
+    const keyed = (passcode: string) => crypto.createHmac('sha256', config.sessionSecret).update(passcode).digest('hex')
+    for (const [passcode, issuedRole] of [['class-pass', 'member'], ['admin-pass', 'admin']]) {
+      const payload = payloadOf(await login(passcode))
+      expect(payload).not.toContain(sha256(passcode))
+      expect(payload.split(':')).toEqual([issuedRole, expect.stringMatching(/^\d+$/), keyed(passcode)])
+    }
   })
 })
 

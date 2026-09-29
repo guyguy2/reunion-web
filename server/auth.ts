@@ -49,8 +49,10 @@ export function roleForPasscode(config: Config, passcode: string): Role | null {
   return null
 }
 
-/** Goes into the session cookie, so changing a role's passcode ends that role's sessions. */
-const passcodeHash = (config: Config, role: Role) => sha256(role === 'admin' ? config.adminPasscode : config.classPasscode)
+/** Goes into the session cookie, so changing a role's passcode ends that role's sessions. Keyed with the session
+ * secret, so a copied cookie does not give away a plain hash of the passcode to guess against. */
+const passcodeHash = (config: Config, role: Role) =>
+  crypto.createHmac('sha256', config.sessionSecret).update(role === 'admin' ? config.adminPasscode : config.classPasscode).digest('hex')
 
 export async function startSession(c: Context, config: Config, role: Role) {
   const expires = Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000
