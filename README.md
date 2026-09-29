@@ -109,6 +109,8 @@ railway domain
 
 After that, deploy with `pnpm release`. It stamps `APP_VERSION` with the time and commit, then runs `railway up`. Pushing to GitHub does not deploy.
 
+After a deploy, click through [docs/manual-tests.md](docs/manual-tests.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
