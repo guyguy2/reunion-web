@@ -5,10 +5,10 @@ import { expect, login, test } from './fixtures.ts'
 // builds on what the earlier tests added, so the areas are serial chains and the order matters.
 
 const LAUGH = '\u{1F602}'
+// Every add that could succeed types a title in, so the server never asks YouTube or Spotify for one (an outbound
+// request the browser blocking cannot stop). That includes the duplicate checks, which must also pass when run alone.
 const YOUTUBE = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
 const SPOTIFY = 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC'
-
-// A title is always typed in, so the server never asks YouTube or Spotify for one.
 
 test.describe('memories', () => {
   test('with no album configured, says so and shows no photos', async ({ page }) => {
@@ -86,9 +86,12 @@ test.describe.serial('videos', () => {
 
   test('refuses the same video twice', async ({ page }) => {
     await login(page, 'member')
+    // Make sure it is on the shelf, so this also holds when run alone (a repeat answers 400 and changes nothing).
+    await page.request.post('/api/videos', { data: { url: YOUTUBE, title } })
     await page.goto('/videos')
     await page.getByRole('button', { name: '+ הוספת סרטון' }).click()
     await page.getByLabel('קישור לסרטון').fill('https://youtu.be/dQw4w9WgXcQ')
+    await page.getByLabel('שם הסרטון (לא חובה)').fill('Same video again')
     await page.getByRole('button', { name: 'הוספה לספרייה' }).click()
     await expect(page.getByText('הסרטון הזה כבר בספרייה')).toBeVisible()
     await expect(page.getByRole('heading', { name: title })).toHaveCount(1)
@@ -215,7 +218,7 @@ test.describe.serial('quotes', () => {
     await expect(wall(page).getByRole('button', { name: `${LAUGH} 2` })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  test('a member cannot remove anything, an organizer can', async ({ page }) => {
+  test('a member cannot remove anything', async ({ page }) => {
     await login(page, 'member')
     await page.goto('/quotes')
     await expect(wall(page)).toBeVisible()
@@ -244,7 +247,8 @@ test.describe.serial('event page', () => {
     await expect(page.getByRole('heading', { name: 'Class Reunion', level: 1 })).toBeVisible()
     await expect(page.getByText('Placeholder event details.')).toBeVisible()
 
-    // The event is in 2030, so a countdown runs rather than "the party has started".
+    // This depends on the placeholder date in content/event.json (2030-01-01): the countdown runs, the date shows
+    // 2030, and all of it flips once that date has passed.
     const timer = page.getByRole('timer', { name: 'ספירה לאחור לפגישת המחזור' })
     for (const label of ['ימים', 'שעות', 'דקות', 'שניות']) await expect(timer.getByText(label, { exact: true })).toBeVisible()
     await expect(page.getByText('המסיבה התחילה!')).toHaveCount(0)
@@ -263,6 +267,7 @@ test.describe.serial('event page', () => {
       ['19:00', 'Dinner', ''],
       ['21:00', 'Dance floor', 'Only the music from back then'],
     ]) {
+      // A schedule row is plain divs with no role or name, so climb from the title to the row.
       const row = page.getByText(name, { exact: true }).locator('..').locator('..')
       await expect(row).toContainText(time)
       if (detail) await expect(row).toContainText(detail)
@@ -415,6 +420,7 @@ test.describe.serial('tapes', () => {
     // The same video again, as a short link, is caught.
     await deck.getByRole('button', { name: '+ הוספת קלטת' }).click()
     await deck.getByLabel('קישור לשיר, סרטון, אלבום או פלייליסט').fill('https://youtu.be/dQw4w9WgXcQ')
+    await deck.getByLabel('שם הקלטת (לא חובה)').fill('Same tape again')
     await deck.getByRole('button', { name: 'הוספה למדף' }).click()
     await expect(deck.getByText('הקלטת הזו כבר על המדף')).toBeVisible()
 
