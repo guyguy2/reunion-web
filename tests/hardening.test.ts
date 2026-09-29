@@ -129,6 +129,16 @@ describe('throttle', () => {
     expect(throttle.allow('a')).toBe(false)
   })
 
+  it('checks without counting, and counts only the hits it is told of', () => {
+    const throttle = createThrottle({ max: 1, windowMs: MINUTE, globalMax: 2 })
+    expect([throttle.check('a'), throttle.check('a')]).toEqual([true, true])
+    throttle.hit('a')
+    expect(throttle.check('a')).toBe(false)
+    throttle.hit('b')
+    // Everyone's count is full too.
+    expect(throttle.check('c')).toBe(false)
+  })
+
   it('keeps no key that is left without hits', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     const throttle = createThrottle({ max: 5, windowMs: MINUTE, globalMax: 1 })
@@ -168,12 +178,28 @@ describe('feedback throttle', () => {
     expect((await post(fresh, ip)).status).toBe(201)
   })
 
-  it('takes fifty messages a day from everyone together', async () => {
-    const fresh = createApp(config, db)
-    for (let i = 0; i < 50; i++) expect((await post(fresh, freshIp())).status).toBe(201)
-    const refused = await post(fresh, freshIp())
-    expect(refused.status).toBe(429)
-    expect(await refused.json()).toEqual(TOO_MANY_REQUESTS)
+  it('emails fifty messages a day from everyone together, and still saves the rest', async () => {
+    const { app: fresh, outbox } = mailApp({ feedbackTo: 'organizers@example.test' })
+    for (let i = 0; i < 50; i++) {
+      const res = await post(fresh, freshIp())
+      expect(res.status).toBe(201)
+      expect((await res.json()).emailed).toBe(true)
+    }
+    const before = saved()
+    const over = await post(fresh, freshIp())
+    expect(over.status).toBe(201)
+    expect(await over.json()).toMatchObject({ message: 'The mixtape skips', emailed: false })
+    expect(saved()).toBe(before + 1)
+    expect(outbox).toHaveLength(50)
+  })
+
+  it('does not count feedback it refused against the daily email limit', async () => {
+    const { app: fresh, outbox } = mailApp({ feedbackTo: 'organizers@example.test' })
+    for (let i = 0; i < 50; i++) {
+      expect((await fresh.request('/api/feedback', json('POST', { message: '   ' }, { Cookie: member, 'x-real-ip': freshIp() }))).status).toBe(400)
+    }
+    expect(await (await post(fresh, freshIp())).json()).toMatchObject({ emailed: true })
+    expect(outbox).toHaveLength(1)
   })
 })
 
@@ -181,6 +207,8 @@ describe('sign-in link throttle', () => {
   const link = (target: App, personId: number, ip: string) =>
     target.request(`/api/people/${personId}/signin-link`, { method: 'POST', headers: { Cookie: member, 'x-real-ip': ip } })
   const claimed = (name: string, email: string | null) => insertPerson(db, { name, email, claimed_at: 'now' })
+  /** Moves the profile's last link out of the two-minute cooldown, so the next request sends again. */
+  const pastCooldown = (id: number) => db.prepare("UPDATE recovery_tokens SET created_at = datetime('now', '-1 hour') WHERE person_id = ?").run(id)
 
   it('takes ten requests per address in ten minutes, and answers the same whether or not the profile has an email', async () => {
     const { app: fresh, outbox } = mailApp()
@@ -201,25 +229,67 @@ describe('sign-in link throttle', () => {
     expect(outbox).toHaveLength(1)
   })
 
-  it('takes five requests a day for one profile, from any number of addresses', async () => {
-    const { app: fresh } = mailApp()
+  it('sends five links a day for one profile, from any number of addresses', async () => {
+    const { app: fresh, outbox } = mailApp()
     const target = claimed('Riley Brooks', 'riley@example.test')
-    expect((await link(fresh, target, freshIp())).status).toBe(200)
-    // The rest wait out the two-minute cooldown, and still count.
-    for (let i = 0; i < 4; i++) expect((await link(fresh, target, freshIp())).status).toBe(400)
+    for (let i = 0; i < 5; i++) {
+      expect((await link(fresh, target, freshIp())).status).toBe(200)
+      pastCooldown(target)
+    }
     const refused = await link(fresh, target, freshIp())
     expect(refused.status).toBe(429)
     expect(await refused.json()).toEqual(TOO_MANY_REQUESTS)
+    expect(outbox).toHaveLength(5)
     expect((await link(fresh, claimed('Avery Lane', 'avery@example.test'), freshIp())).status).toBe(200)
   })
 
-  it('takes a hundred requests a day from everyone together', async () => {
-    const { app: fresh } = mailApp()
-    const target = claimed('Jordan Hale', 'jordan@example.test')
-    for (let i = 0; i < 100; i++) expect((await link(fresh, 900_000 + i, freshIp())).status).toBe(404)
-    const refused = await link(fresh, target, freshIp())
+  it('sends a hundred links a day from everyone together', async () => {
+    const { app: fresh, outbox } = mailApp()
+    for (let i = 0; i < 100; i++) {
+      expect((await link(fresh, claimed(`Classmate ${i}`, `classmate${i}@example.test`), freshIp())).status).toBe(200)
+    }
+    const refused = await link(fresh, claimed('Jordan Hale', 'jordan@example.test'), freshIp())
     expect(refused.status).toBe(429)
     expect(await refused.json()).toEqual(TOO_MANY_REQUESTS)
+    expect(outbox).toHaveLength(100)
+  })
+
+  it('does not count a refused request against the address', async () => {
+    const { app: fresh } = mailApp()
+    const full = claimed('Sam Carter', 'sam@example.test')
+    for (let i = 0; i < 5; i++) {
+      expect((await link(fresh, full, freshIp())).status).toBe(200)
+      pastCooldown(full)
+    }
+    const ip = freshIp()
+    for (let i = 0; i < 10; i++) expect((await link(fresh, full, ip)).status).toBe(429)
+    expect((await link(fresh, claimed('Owen Price', 'owen@example.test'), ip)).status).toBe(200)
+  })
+
+  it('counts only the emails it tries to send against the profile and everyone, failed ones included', async () => {
+    let emailDown = false
+    const fresh = createApp(config, db, async () => {
+      if (emailDown) throw new Error('relay down')
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Nothing is sent to profiles that do not exist, to one without an email, or during the cooldown.
+    for (let i = 0; i < 100; i++) expect((await link(fresh, 910_000 + i, freshIp())).status).toBe(404)
+    const noEmail = claimed('Lee Porter', null)
+    for (let i = 0; i < 6; i++) expect((await link(fresh, noEmail, freshIp())).status).toBe(400)
+    const target = claimed('Dana Ellis', 'dana.e@example.test')
+    expect((await link(fresh, target, freshIp())).status).toBe(200)
+    for (let i = 0; i < 5; i++) expect((await link(fresh, target, freshIp())).status).toBe(400)
+    for (let i = 0; i < 3; i++) {
+      pastCooldown(target)
+      expect((await link(fresh, target, freshIp())).status).toBe(200)
+    }
+
+    // The fifth email fails, and still counts: the relay may have sent it.
+    pastCooldown(target)
+    emailDown = true
+    expect(await (await link(fresh, target, freshIp())).json()).toEqual({ error: 'לא הצלחנו לשלוח את המייל. נסו שוב בעוד רגע.' })
+    emailDown = false
+    expect((await link(fresh, target, freshIp())).status).toBe(429)
   })
 
   it('clears the count for the address once a link is used from it', async () => {

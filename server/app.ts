@@ -30,7 +30,7 @@ import { addTape, listTapes } from './tapes.ts'
 import { addVideo, albumVideoEntries, listVideos } from './videos.ts'
 import { addQuote, addQuoteComment, listQuotes, reactToQuote } from './quotes.ts'
 import { listCredits } from './credits.ts'
-import { addFeedback, feedbackSenderFor } from './feedback.ts'
+import { addFeedback, feedbackSenderFor, type SendEmail } from './feedback.ts'
 import { configuredMailer, type Mailer } from './email.ts'
 import { redeemSignInLink, sendSignInLink } from './recovery.ts'
 import { deleteNote, emailNoteAlert, listNotes, markNoteRead, sendNote, unreadNotes } from './notes.ts'
@@ -260,12 +260,22 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     }
   })
 
-  // Feedback to the organizers: saved, then emailed when email is configured.
+  // Feedback to the organizers: saved, then emailed when email is configured and the day's emails are not used up.
   const sendFeedback = feedbackSenderFor(mailer, config.feedbackTo)
+  // Counts toward the day's emails only when one is actually tried. addFeedback calls it without awaiting anything
+  // first, so no other request can come between the check in the route and this hit.
+  const countedFeedback: SendEmail | null =
+    sendFeedback &&
+    ((message) => {
+      feedbackPerDay.hit('all')
+      return sendFeedback(message)
+    })
   app.post('/api/feedback', async (c) => {
-    if (!feedbackPerClient.allow(clientKey(c)) || !feedbackPerDay.allow('all')) return c.json({ error: 'יותר מדי בקשות. נסו שוב מאוחר יותר.' }, 429)
+    if (!feedbackPerClient.allow(clientKey(c))) return c.json({ error: 'יותר מדי בקשות. נסו שוב מאוחר יותר.' }, 429)
     try {
-      return c.json(await addFeedback(db, await c.req.json().catch(() => null), sendFeedback), 201)
+      const body = await c.req.json().catch(() => null)
+      // Past the day's emails, feedback is still saved for the organizers' inbox, just not emailed.
+      return c.json(await addFeedback(db, body, feedbackPerDay.check('all') ? countedFeedback : null), 201)
     } catch (err) {
       return badRequest(c, err)
     }
@@ -348,16 +358,27 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   // Forgot the code (or never set one): a one-time sign-in link to the email on the profile.
   app.post('/api/people/:id/signin-link', async (c) => {
     const id = Number(c.req.param('id'))
-    // Counted before the profile is looked at, so a refusal says nothing about it, not even whether it has an email.
-    if (!linksPerClient.allow(clientKey(c)) || !linksPerPerson.allow(String(id))) return c.json({ error: 'יותר מדי בקשות. נסו שוב מאוחר יותר.' }, 429)
+    const ip = clientKey(c)
+    // Every limit is checked before the profile is looked at, so a refusal says nothing about it, and before any is
+    // counted, so a refused request uses nothing up.
+    if (!linksPerClient.check(ip) || !linksPerPerson.check(String(id))) return c.json({ error: 'יותר מדי בקשות. נסו שוב מאוחר יותר.' }, 429)
+    linksPerClient.hit(ip)
     const person = getPerson(db, id)
     if (!person?.claimed_at) return c.json({ error: 'Not found' }, 404)
     if (!config.publicUrl) {
       console.error(`Sign-in link for person ${person.id} not sent: PUBLIC_URL is not set, so the link would have no address`)
       return c.json({ error: 'משהו השתבש' }, 500)
     }
+    // The profile's count and everyone's go up only when an email is actually tried. sendSignInLink calls the mailer
+    // without awaiting anything first, so no other request can come between the check above and this hit.
+    const counted: Mailer | null =
+      mailer &&
+      ((message) => {
+        linksPerPerson.hit(String(id))
+        return mailer(message)
+      })
     try {
-      const sentTo = await sendSignInLink(db, person, mailer, config.publicUrl)
+      const sentTo = await sendSignInLink(db, person, counted, config.publicUrl)
       return c.json({ sentTo })
     } catch (err) {
       return badRequest(c, err)

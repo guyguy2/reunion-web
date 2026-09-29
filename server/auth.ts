@@ -118,16 +118,25 @@ export function createLoginLimiter() {
 export function createThrottle(opts: { max: number; windowMs: number; globalMax?: number }) {
   const hits = new Map<string, number[]>()
   let everyone: number[] = []
+  const cutoff = () => Date.now() - opts.windowMs
+  /** Whether one more hit on `key` is within the limits. Records nothing. */
+  const check = (key: string): boolean => {
+    everyone = everyone.filter((t) => t > cutoff())
+    return recentTimes(hits, key, cutoff()).length < opts.max && everyone.length < (opts.globalMax ?? Infinity)
+  }
+  /** Records a hit on `key`, and on everyone's count when there is a global limit. */
+  const hit = (key: string) => {
+    const now = Date.now()
+    hits.set(key, [...recentTimes(hits, key, cutoff()), now])
+    if (opts.globalMax !== undefined) everyone.push(now)
+  }
   return {
+    check,
+    hit,
     /** Records the hit when allowed. */
     allow(key: string): boolean {
-      const now = Date.now()
-      const cutoff = now - opts.windowMs
-      const mine = recentTimes(hits, key, cutoff)
-      everyone = everyone.filter((t) => t > cutoff)
-      if (mine.length >= opts.max || everyone.length >= (opts.globalMax ?? Infinity)) return false
-      hits.set(key, [...mine, now])
-      if (opts.globalMax !== undefined) everyone.push(now)
+      if (!check(key)) return false
+      hit(key)
       return true
     },
     clear: (key: string) => void hits.delete(key),
