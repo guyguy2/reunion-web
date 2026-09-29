@@ -1,6 +1,10 @@
 # Manual tests after a deploy
 
-What to click through on the live site after `pnpm release`. The automated suite (`pnpm typecheck && pnpm test`) covers the server routes end to end on a temporary database, and the client only through pure helpers, so the browser checks below matter most for anything in `web/`. `pnpm test:e2e` also drives the client in a real browser against demo data on a throwaway local server; it never touches the live site. `pnpm test:e2e` builds the site and runs the suite, and `pnpm exec playwright test --ui` shows it clicking through. On a new machine run `pnpm exec playwright install chromium` once. Always go through pnpm: a globally installed playwright of another version breaks the run. The checks below are what the suite cannot do: real email, real YouTube and Spotify playback, automatic face detection, a real phone, and the live site with its real data.
+What to click through on the live site after `pnpm release`.
+
+Two automated suites cover the rest. `pnpm typecheck && pnpm test` covers the server routes end to end on a temporary database. `pnpm test:e2e` builds the site and clicks through the client in a real browser against demo data on a throwaway local server, never the live site. Run `pnpm exec playwright test --ui` to watch it work, and `pnpm exec playwright install chromium` once on a new machine. Always go through pnpm: a globally installed playwright of another version breaks the run.
+
+So the checks below are what neither suite can do: real email, real YouTube and Spotify playback, automatic face detection, a real phone, the live site with its real data, and timing or offline cases.
 
 ## Before deploying
 
