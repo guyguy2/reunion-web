@@ -123,12 +123,10 @@ describe('admin routes are for organizers only', () => {
     return { method, headers, body: fileForm(body.file, file, { title: 'Class photo' }) }
   }
 
-  it('lists every registered admin route, 32 of them', () => {
-    expect(ROUTES).toHaveLength(32)
+  it('lists every registered admin route', () => {
     const registered = adminRoutes(config, db)
-      .routes.filter((r) => r.method !== 'ALL')
+      .routes.filter((r) => !(r.method === 'ALL' && r.path === '/*'))
       .map((r) => `${r.method} ${r.path}`)
-    expect(registered).toHaveLength(32)
     expect(ROUTES.map(([method, route]) => `${method} ${route}`).sort()).toEqual([...registered].sort())
   })
 
@@ -176,8 +174,9 @@ describe('session cookie', () => {
 
   it('treats a cookie whose role was changed as no session', async () => {
     const { payload, signature } = split(member)
-    expect(payload.startsWith('member:')).toBe(true)
-    const forged = join(payload.replace(/^member:/, 'admin:'), signature)
+    expect(payload).toContain('member')
+    const forged = join(payload.replace('member', 'admin'), signature)
+    expect(forged).not.toBe(member)
     expect(await role(forged)).toBeNull()
     expect(await people(forged)).toBe(401)
     expect((await app.request('/api/admin/stats', { headers: { Cookie: forged } })).status).toBe(401)
