@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { Hono } from 'hono'
+import sharp from 'sharp'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../server/app.ts'
 import { clientKey, createLoginLimiter, createThrottle, sha256 } from '../server/auth.ts'
@@ -442,32 +443,50 @@ describe('remove my info', () => {
     return { id: person.id, token }
   }
   const remove = (token: string) => app.request('/api/me', { method: 'DELETE', headers: { Cookie: member, 'x-edit-token': token } })
+  /** Uploads a real "now" photo as the owner and returns its path under the data folder. */
+  async function uploadNow(token: string): Promise<string> {
+    const png = await sharp({ create: { width: 300, height: 200, channels: 3, background: '#14b8a6' } }).png().toBuffer()
+    const form = new FormData()
+    form.set('photo', new File([new Uint8Array(png)], 'photo.png', { type: 'image/png' }))
+    const res = await app.request('/api/me/photo/now', { method: 'POST', headers: { Cookie: member, 'x-edit-token': token }, body: form })
+    expect(res.status).toBe(200)
+    return (await res.json()).nowPhotos.at(-1).url.slice('/media/'.length)
+  }
+  const onDisk = (rel: string) => fs.existsSync(path.join(dataDir, rel))
 
   it('clears the former name too, keeps the photos an organizer added, and frees the profile to be claimed', async () => {
     const { id, token } = await ownProfile('Jenny Carter', 'Jenny Miller')
+    const own = await uploadNow(token)
     db.prepare("INSERT INTO person_photos (person_id, kind, path) VALUES (?, 'then', 'uploads/organizer-then.webp')").run(id)
 
     expect((await remove(token)).status).toBe(200)
-    expect(getPerson(db, id)).toMatchObject({ name: 'Jenny Carter', former_name: null, city: null, claimed_at: null, edit_token_hash: null })
+    expect(getPerson(db, id)).toMatchObject({ name: 'Jenny Carter', former_name: null, city: null, now_photo: null, claimed_at: null, edit_token_hash: null })
     expect(getPerson(db, id)?.photos).toMatchObject([{ kind: 'then', path: 'uploads/organizer-then.webp' }])
+    expect(onDisk(own)).toBe(false)
     expect((await app.request(`/api/people/${id}/claim`, json('POST', { pin: '2468' }, { Cookie: member }))).status).toBe(200)
   })
 
-  it('changes nothing when a step fails part way', async () => {
-    const { id, token } = await ownProfile('Casey Morgan', 'Casey Brown')
-    db.prepare('INSERT INTO device_tokens (token_hash, person_id) VALUES (?, ?)').run('hardening-device-key', id)
-    const before = getPerson(db, id)
+  it('changes nothing and deletes no photo file when a step fails part way', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
+    // A step before the photos, and one among them, after the first photo's row is already gone.
+    for (const step of ['device keys', 'second photo'] as const) {
+      const { id, token } = await ownProfile('Casey Morgan', 'Casey Brown')
+      db.prepare('INSERT INTO device_tokens (token_hash, person_id) VALUES (?, ?)').run(`hardening-device-key-${step}`, id)
+      const photos = [await uploadNow(token), await uploadNow(token)]
+      const before = getPerson(db, id)
 
-    db.exec(`CREATE TEMP TRIGGER device_tokens_fail BEFORE DELETE ON device_tokens BEGIN SELECT RAISE(ABORT, 'simulated failure'); END`)
-    try {
-      const res = await remove(token)
-      expect(res.status).toBe(500)
-      expect(await res.json()).toEqual({ error: 'משהו השתבש' })
-    } finally {
-      db.exec('DROP TRIGGER device_tokens_fail')
+      const on = step === 'device keys' ? 'device_tokens' : `person_photos WHEN OLD.path = '${photos[1]}'`
+      db.exec(`CREATE TEMP TRIGGER remove_fails BEFORE DELETE ON ${on} BEGIN SELECT RAISE(ABORT, 'simulated failure'); END`)
+      try {
+        const res = await remove(token)
+        expect(res.status, step).toBe(500)
+        expect(await res.json(), step).toEqual({ error: 'משהו השתבש' })
+      } finally {
+        db.exec('DROP TRIGGER remove_fails')
+      }
+      expect(getPerson(db, id), step).toEqual(before)
+      for (const rel of photos) expect(onDisk(rel), `${step}: ${rel}`).toBe(true)
+      expect((await app.request('/api/me', { headers: { Cookie: member, 'x-edit-token': token } })).status, step).toBe(200)
     }
-    expect(getPerson(db, id)).toEqual(before)
-    expect((await app.request('/api/me', { headers: { Cookie: member, 'x-edit-token': token } })).status).toBe(200)
   })
 })

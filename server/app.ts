@@ -21,8 +21,8 @@ import {
   startSession,
   type AppEnv,
 } from './auth.ts'
-import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, cropFace, readImageField } from './images.ts'
-import { addPhoto, deletePhoto, deletePhotos, getPerson, insertPerson, listPeople, listPhotos, parsePersonInput, serializePerson, updatePerson } from './people.ts'
+import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, cropFace, readImageField, removeUpload } from './images.ts'
+import { addPhoto, deletePhoto, getPerson, insertPerson, listPeople, listPhotos, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { getScene, listScenes, serializeTag } from './scenes.ts'
 import { adminRoutes } from './admin.ts'
 import { albumPhotos, albumVideos } from './album.ts'
@@ -480,21 +480,33 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   app.delete('/api/me', (c) => {
     const me = owner(c)
     if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
+    let files: string[] = []
     db.exec('BEGIN')
     try {
       updatePerson(db, me.id, {
         former_name: null, nickname: null, email: null, instagram: null, linkedin: null, facebook: null, website: null, phone: null, x: null, city: null, bio: null, quote: null,
         attending: null, claimed_at: null, edit_token_hash: null, pin_hash: null,
+        // The mirror people.ts keeps for the portrait wall, of the "now" photos that go below.
+        now_photo: null,
       })
       db.prepare('DELETE FROM notes WHERE recipient_id = ?').run(me.id)
       db.prepare('DELETE FROM device_tokens WHERE person_id = ?').run(me.id)
       db.prepare('DELETE FROM recovery_tokens WHERE person_id = ?').run(me.id)
-      // Last, because it deletes the files too, and a rollback cannot bring those back.
-      deletePhotos(db, config.dataDir, me.id, 'now')
+      // The own "now" photos: the rows go here, the files only after the commit, since a rollback cannot bring files back.
+      files = listPhotos(db, me.id, 'now').map((p) => p.path)
+      db.prepare("DELETE FROM person_photos WHERE person_id = ? AND kind = 'now'").run(me.id)
       db.exec('COMMIT')
     } catch (err) {
       if (db.isTransaction) db.exec('ROLLBACK')
       throw err
+    }
+    for (const rel of files) {
+      try {
+        removeUpload(config.dataDir, rel)
+      } catch (err) {
+        // Only logged: the removal is already saved.
+        console.error(`Photo file ${rel} was not deleted: ${(err as Error).message}`)
+      }
     }
     return c.json({ ok: true })
   })
