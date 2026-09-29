@@ -111,7 +111,7 @@ railway domain
 
 After that, deploy with `pnpm release`. It runs the typecheck, the tests and the build, and refuses to go on while the working tree has uncommitted or untracked files (`railway up` uploads the working tree, but `APP_VERSION` names the last commit). Then it stamps `APP_VERSION` with the time and commit and runs `railway up`. Pushing to GitHub does not deploy.
 
-The limits on wrong passcodes and codes, sign-in links and feedback count per client address, taken from `X-Real-IP`, which Railway's edge proxy sets (the last `X-Forwarded-For` hop is only a fallback for a proxy that does not). They are kept in memory, which suits the single instance the site runs as; a deploy starts them over.
+Where a limit counts per address (wrong passcodes and codes, sign-in link requests, feedback), the address comes from `X-Real-IP`, which Railway's edge proxy sets (the last `X-Forwarded-For` hop is only a fallback for a proxy that does not). All the limits are kept in memory, which suits the single instance the site runs as; a deploy starts them over.
 
 After a deploy, click through [docs/manual-tests.md](docs/manual-tests.md).
 
