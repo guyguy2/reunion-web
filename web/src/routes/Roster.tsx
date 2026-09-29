@@ -5,7 +5,7 @@ import { possibleDuplicates } from '../roster.ts'
 import { isTypingTarget } from '../adminKeys.ts'
 import { oneAtATime } from '../adminOnce.ts'
 import { nextLive, previousLive } from '../adminQueue.ts'
-import SignInLink from '../components/SignInLink.tsx'
+import SignInLink, { LinkToPass, type OrganizerLink } from '../components/SignInLink.tsx'
 
 const VIEWS = [
   { id: 'review', label: 'אחד אחד' },
@@ -99,6 +99,8 @@ export default function Roster() {
   // One answer or new profile at a time, so a double click doesn't skip a person or create two.
   const [busy, setBusy] = useState(false)
   const [once] = useState(() => oneAtATime(setBusy))
+  // The last sign-in link made here stays up after the review moves on, so it can still be copied.
+  const [lastLink, setLastLink] = useState<OrganizerLink | null>(null)
 
   const load = useCallback(async () => {
     setScenes((await api<Scene[]>('/api/admin/scenes')).filter((s) => s.kind === 'group'))
@@ -187,6 +189,7 @@ export default function Roster() {
 
       {view === 'review' && (
         <div className="space-y-4">
+          {lastLink && <LinkToPass key={lastLink.url} link={lastLink} />}
           <label className="flex items-center gap-2 text-sm font-bold">
             <input type="checkbox" className="size-5" checked={onlyOpen} disabled={busy} onChange={(e) => (setOnlyOpen(e.target.checked), setQueue(null), setIndex(0))} />
             רק מי שעוד לא סומן כבן או בת
@@ -242,7 +245,7 @@ export default function Roster() {
                   זה איש צוות, להסתיר
                 </button>
               </div>
-              {current.claimed && <SignInLink person={current} once={once} busy={busy} />}
+              {current.claimed && <SignInLink person={current} once={once} busy={busy} onLink={setLastLink} />}
               <p className="hidden text-xs opacity-70 sm:block">מקלדת: G בת, B בן, חצים למעבר.</p>
             </div>
           )}

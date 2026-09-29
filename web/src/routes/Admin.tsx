@@ -7,6 +7,7 @@ import { BACKUP_DESCRIPTION } from '../adminBackup.ts'
 import { finished, isBusy, started, type Busy } from '../adminBusy.ts'
 import Tagger from './Tagger.tsx'
 import Roster from './Roster.tsx'
+import SignInLink from '../components/SignInLink.tsx'
 
 /** Destructive actions ask twice, inline, instead of using a browser dialog. */
 function ConfirmButton({ label, confirmLabel, onConfirm, className = '' }: { label: string; confirmLabel: string; onConfirm: () => void; className?: string }) {
@@ -497,6 +498,21 @@ export default function Admin() {
                     <button className="btn btn-plain btn-sm" onClick={() => setEditingId(p.id)}>
                       עריכת השם
                     </button>
+                    {p.claimed && (
+                      <SignInLink
+                        person={p}
+                        busy={isBusy(busy, 'link')}
+                        once={async (action) => {
+                          if (isBusy(busy, 'link')) return
+                          setBusy((b) => started(b, 'link'))
+                          try {
+                            await action()
+                          } finally {
+                            setBusy((b) => finished(b, 'link'))
+                          }
+                        }}
+                      />
+                    )}
                     {p.claimed && (
                       <ConfirmButton label="איפוס בעלות" confirmLabel="לאפס" onConfirm={() => run('reset', () => api(`/api/admin/people/${p.id}/reset-claim`, { method: 'POST' }).then(() => 'הבעלות אופסה. קישור העריכה הישן כבר לא עובד.'))} />
                     )}

@@ -10,7 +10,7 @@ import { openDb } from '../server/db.ts'
 import type { Mailer } from '../server/email.ts'
 import { getPerson, insertPerson } from '../server/people.ts'
 import type { Person } from '../web/src/api.ts'
-import SignInLink, { LinkToPass } from '../web/src/components/SignInLink.tsx'
+import SignInLink, { copyOrSelect, LinkToPass } from '../web/src/components/SignInLink.tsx'
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-organizer-link-test-'))
 const config: Config = {
@@ -161,12 +161,29 @@ describe('sign-in link on the roster', () => {
   const link = { url: 'https://example.test/signin/abc-123', expiresAt: '2026-10-01T18:30:00Z', name: 'Morgan Blake' }
 
   it('shows the link read-only with a copy button, whose it is, and how long it works', () => {
-    const html = renderToStaticMarkup(createElement(LinkToPass, { link, copied: false, onCopy: () => {} }))
+    const html = renderToStaticMarkup(createElement(LinkToPass, { link }))
     expect(html).toMatch(/<input[^>]*readOnly=""[^>]*value="https:\/\/example\.test\/signin\/abc-123"/)
     expect(html).toContain('Morgan Blake')
     expect(html).toContain('>העתקה</button>')
     expect(html).toContain('הקישור עובד פעם אחת ותקף 30 דקות. שלחו אותו רק למי שהפרופיל שלו.')
-    expect(renderToStaticMarkup(createElement(LinkToPass, { link, copied: true, onCopy: () => {} }))).toContain('>הועתק</button>')
+  })
+
+  it('copies the link when the browser lets it', async () => {
+    const writeText = vi.fn(async () => {})
+    const select = vi.fn()
+    expect(await copyOrSelect(link.url, { writeText }, select)).toBe(true)
+    expect(writeText).toHaveBeenCalledWith(link.url)
+    expect(select).not.toHaveBeenCalled()
+  })
+
+  it('selects the link for copying by hand when there is no clipboard or the copy is refused', async () => {
+    const select = vi.fn()
+    // No clipboard at all, as on a page that is not served over https.
+    expect(await copyOrSelect(link.url, undefined, select)).toBe(false)
+    expect(select).toHaveBeenCalledTimes(1)
+    const refused = vi.fn(() => Promise.reject(new DOMException('Write permission denied', 'NotAllowedError')))
+    expect(await copyOrSelect(link.url, { writeText: refused }, select)).toBe(false)
+    expect(select).toHaveBeenCalledTimes(2)
   })
 
   it('starts as a button, which waits while another roster action runs', () => {
