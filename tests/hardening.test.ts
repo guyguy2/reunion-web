@@ -554,8 +554,19 @@ describe('remove my info', () => {
     const { id, token } = await ownProfile('Jenny Carter', 'Jenny Miller')
     const own = await uploadNow(token)
     db.prepare("INSERT INTO person_photos (person_id, kind, path) VALUES (?, 'then', 'uploads/organizer-then.webp')").run(id)
+    db.prepare('INSERT INTO device_tokens (token_hash, person_id) VALUES (?, ?)').run('hardening-device-key-removed', id)
+    db.prepare("INSERT INTO recovery_tokens (token_hash, person_id, expires_at) VALUES (?, ?, datetime('now', '+30 minutes'))").run('hardening-link-removed', id)
+    expect((await app.request('/api/notes', json('POST', { to: id, message: 'See you there', anonymous: true }, { Cookie: member }))).status).toBe(201)
+    const left = () =>
+      [
+        db.prepare('SELECT COUNT(*) AS n FROM device_tokens WHERE person_id = ?').get(id),
+        db.prepare('SELECT COUNT(*) AS n FROM notes WHERE recipient_id = ?').get(id),
+        db.prepare('SELECT COUNT(*) AS n FROM recovery_tokens WHERE person_id = ?').get(id),
+      ].map((row) => (row as { n: number }).n)
+    expect(left()).toEqual([1, 1, 1])
 
     expect((await remove(token)).status).toBe(200)
+    expect(left()).toEqual([0, 0, 0])
     expect(getPerson(db, id)).toMatchObject({ name: 'Jenny Carter', former_name: null, city: null, now_photo: null, claimed_at: null, edit_token_hash: null })
     expect(getPerson(db, id)?.photos).toMatchObject([{ kind: 'then', path: 'uploads/organizer-then.webp' }])
     expect(onDisk(own)).toBe(false)

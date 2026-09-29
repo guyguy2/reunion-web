@@ -22,7 +22,7 @@ import {
   type AppEnv,
 } from './auth.ts'
 import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, cropFace, readImageField, removeUpload } from './images.ts'
-import { addPhoto, deletePhoto, getPerson, insertPerson, listPeople, listPhotos, parsePersonInput, serializePerson, updatePerson } from './people.ts'
+import { addPhoto, deletePhoto, getPerson, insertPerson, listPeople, listPhotos, parsePersonInput, serializePerson, syncPrimary, updatePerson } from './people.ts'
 import { getScene, listScenes, serializeTag } from './scenes.ts'
 import { adminRoutes } from './admin.ts'
 import { albumPhotos, albumVideos } from './album.ts'
@@ -508,8 +508,6 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
       updatePerson(db, me.id, {
         former_name: null, nickname: null, email: null, instagram: null, linkedin: null, facebook: null, website: null, phone: null, x: null, city: null, bio: null, quote: null,
         attending: null, claimed_at: null, edit_token_hash: null, pin_hash: null,
-        // The mirror people.ts keeps for the portrait wall, of the "now" photos that go below.
-        now_photo: null,
       })
       db.prepare('DELETE FROM notes WHERE recipient_id = ?').run(me.id)
       db.prepare('DELETE FROM device_tokens WHERE person_id = ?').run(me.id)
@@ -517,6 +515,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
       // The own "now" photos: the rows go here, the files only after the commit, since a rollback cannot bring files back.
       files = listPhotos(db, me.id, 'now').map((p) => p.path)
       db.prepare("DELETE FROM person_photos WHERE person_id = ? AND kind = 'now'").run(me.id)
+      syncPrimary(db, me.id, 'now')
       db.exec('COMMIT')
     } catch (err) {
       if (db.isTransaction) db.exec('ROLLBACK')
