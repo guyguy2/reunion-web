@@ -59,9 +59,10 @@ export function Enlarged({ src, onClose }: { src: string; onClose: () => void })
   )
 }
 
-/** The line over the claim button while neither an email nor a personal code is filled in, else ''. */
-export function claimNudge(owner: NewOwner): string {
-  return owner.email.trim() || owner.pin.trim() ? '' : 'בלי מייל או קוד אישי לא תוכלו להיכנס ממכשיר אחר.'
+/** Over the claim button while the email is empty: without one, a forgotten code can only be undone by an organizer. */
+export function ClaimNudge({ email }: { email: string }) {
+  if (email.trim()) return null
+  return <p className="text-sm font-bold">בלי מייל, אם תשכחו את הקוד רק מארגן יוכל להחזיר אתכם לפרופיל.</p>
 }
 
 /** Every appearance of this person on the class photos, oldest first. */
@@ -246,7 +247,7 @@ export function PersonPanel({ person, onClose, onJump, layout }: { person: Perso
           claiming ? (
             <form className="space-y-3 rounded-lg border-[3px] border-ink p-3" onSubmit={(e) => (e.preventDefault(), claim())}>
               <NewOwnerFields value={owner} onChange={setOwner} />
-              {claimNudge(owner) && <p className="text-sm font-bold">{claimNudge(owner)}</p>}
+              <ClaimNudge email={owner.email} />
               <button className="btn btn-pink w-full" disabled={busy || !newOwnerReady(owner)}>
                 זה הפרופיל שלי
               </button>

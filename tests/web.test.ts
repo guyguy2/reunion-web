@@ -8,7 +8,7 @@ import FriendFilters, { classMenuValue, classValue, pickClass } from '../web/src
 import LoadFailed from '../web/src/components/LoadFailed.tsx'
 import { daysLeft, rsvpShortcut } from '../web/src/components/Rsvp.tsx'
 import { NoteCard, noteAction } from '../web/src/components/Notes.tsx'
-import { claimNudge } from '../web/src/components/PersonPanel.tsx'
+import { ClaimNudge } from '../web/src/components/PersonPanel.tsx'
 import { faceDirection, firstFace, neighborFace, SceneOpenFailed } from '../web/src/components/SceneViewerParts.tsx'
 import { LAYER, pushEscape } from '../web/src/useEscape.ts'
 import { Credits } from '../web/src/routes/EventPage.tsx'
@@ -515,12 +515,16 @@ describe('notes inbox actions', () => {
 })
 
 describe('claiming a profile', () => {
-  it('warns only when neither an email nor a personal code is filled in', () => {
-    const warning = 'בלי מייל או קוד אישי לא תוכלו להיכנס ממכשיר אחר.'
-    expect(claimNudge({ pin: '', email: '' })).toBe(warning)
-    expect(claimNudge({ pin: '  ', email: ' ' })).toBe(warning)
-    expect(claimNudge({ pin: '1234', email: '' })).toBe('')
-    expect(claimNudge({ pin: '', email: 'dana@example.com' })).toBe('')
+  const nudge = (email: string) => renderToStaticMarkup(createElement(ClaimNudge, { email }))
+
+  it('warns over the claim button while the email is empty, whatever code was chosen', () => {
+    const warning = 'בלי מייל, אם תשכחו את הקוד רק מארגן יוכל להחזיר אתכם לפרופיל.'
+    expect(nudge('')).toContain(warning)
+    expect(nudge('  ')).toContain(warning)
+  })
+
+  it('says nothing once there is an email', () => {
+    expect(nudge('dana@example.com')).toBe('')
   })
 })
 
