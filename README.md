@@ -4,25 +4,6 @@ A private website for a high school class reunion. The site is fully working and
 
 The centerpiece is a zoomable "yearbook": the class composite posters from each school year as deep-zoom pictures with a clickable box on every face. Classmates find themselves, put a name on a face ("That's me!" or "I know who this is"), claim their profile and fill in what they have been up to. Around it: a 90s cassette-deck mixtape that classmates fill with songs, a video library, a quotes wall, private notes between classmates, the shared photo album, and the event page with an RSVP count.
 
-## Screenshots
-
-Taken with the built-in demo data (generated cartoon classmates, not real people). Real class photos are never committed.
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/yearbook.webp" alt="Deep-zoom class photo with a box on every face" width="400"><br><sub>Yearbook: deep-zoom class photo, a box on every face</sub></td>
-    <td width="50%"><img src="docs/screenshots/person.webp" alt="A classmate's profile panel next to the photo" width="400"><br><sub>Profile panel with contact links and a then/now slider</sub></td>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/quotes.webp" alt="Quotes wall" width="400"><br><sub>Quotes wall ("Who said it?")</sub></td>
-    <td><img src="docs/screenshots/event.webp" alt="Event page with a countdown and schedule" width="400"><br><sub>Event page: countdown, details, RSVP count, schedule</sub></td>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/admin.webp" alt="Admin overview with counts" width="400"><br><sub>Principal's Office (admin) overview</sub></td>
-    <td align="center"><img src="docs/screenshots/phone.webp" alt="Phone layout: a grid of portrait tiles" width="180"><br><sub>On phones: a portrait grid instead of the big photo</sub></td>
-  </tr>
-</table>
-
 ## Features
 
 - **Passcode gate.** One shared class passcode, checked on the server. After 10 wrong tries in 15 minutes, an address has to wait. Nothing (API, pictures, uploads) is served without it, except the four `/branding` pictures. A separate admin passcode unlocks the organizer tools, with its own count of wrong tries. A session lasts 90 days, and changing a passcode signs out everyone who logged in with it. Every response is `noindex`.
