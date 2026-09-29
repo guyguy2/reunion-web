@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api, faceUrl, matchesPerson, type FeedbackMessage, type Person } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { unknownFaces } from '../yearbook.ts'
+import { BACKUP_DESCRIPTION } from '../adminBackup.ts'
+import { finished, isBusy, started, type Busy } from '../adminBusy.ts'
 import Tagger from './Tagger.tsx'
 import Roster from './Roster.tsx'
 
@@ -309,7 +311,7 @@ function Backup() {
         <a className="btn btn-sm" href="/api/admin/export" download>
           הורדת גיבוי
         </a>
-        <p className="text-sm opacity-70">קובץ JSON עם כל הפרופילים, התמונות הקבוצתיות וכל תיוגי הפנים. בלי קבצי התמונות עצמם, בלי קודים אישיים ובלי פתקים.</p>
+        <p className="text-sm opacity-70">{BACKUP_DESCRIPTION}</p>
       </div>
     </Section>
   )
@@ -326,7 +328,7 @@ type TabId = (typeof TABS)[number]['id']
 export default function Admin() {
   const { scenes, people, reload } = useStore()
   const [taggingId, setTaggingId] = useState<number | null>(null)
-  const [busy, setBusy] = useState('')
+  const [busy, setBusy] = useState<Busy>({})
   const [notice, setNotice] = useState('')
   const [csv, setCsv] = useState('')
   const [newName, setNewName] = useState('')
@@ -336,7 +338,7 @@ export default function Admin() {
   const tagging = scenes.find((s) => s.id === taggingId)
 
   async function run(label: string, action: () => Promise<string | void>) {
-    setBusy(label)
+    setBusy((b) => started(b, label))
     setNotice('')
     try {
       const result = await action()
@@ -345,7 +347,7 @@ export default function Admin() {
     } catch (err) {
       setNotice(`שגיאה: ${(err as Error).message}`)
     } finally {
-      setBusy('')
+      setBusy((b) => finished(b, label))
     }
   }
 
@@ -382,6 +384,9 @@ export default function Admin() {
             {t.label}
           </button>
         ))}
+        <Link to="/admin/branding" className="btn btn-plain btn-sm">
+          מיתוג
+        </Link>
       </nav>
 
       {tab === 'overview' && (
@@ -398,8 +403,8 @@ export default function Admin() {
         <Section title="תמונות מחזור">
           {people.length === 0 && scenes.length === 0 && (
             <div className="flex flex-wrap items-center gap-3">
-              <button className="btn btn-sm" disabled={busy === 'demo'} onClick={() => run('demo', () => api('/api/admin/demo', { method: 'POST' }).then(() => 'נתוני ההדגמה נטענו.'))}>
-                {busy === 'demo' ? 'טוען...' : 'טעינת נתוני הדגמה'}
+              <button className="btn btn-sm" disabled={isBusy(busy, 'demo')} onClick={() => run('demo', () => api('/api/admin/demo', { method: 'POST' }).then(() => 'נתוני ההדגמה נטענו.'))}>
+                {isBusy(busy, 'demo') ? 'טוען...' : 'טעינת נתוני הדגמה'}
               </button>
               <p className="text-sm opacity-70">בוגרים ותמונות מדומים, להתנסות באתר.</p>
             </div>
@@ -436,13 +441,13 @@ export default function Admin() {
               </label>
               <input id="scene-image" name="image" type="file" accept="image/*" className="field" required />
             </div>
-            <button className="btn btn-pink" disabled={busy === 'scene'}>
-              {busy === 'scene' ? 'מפתחים...' : 'הוספת תמונה'}
+            <button className="btn btn-pink" disabled={isBusy(busy, 'scene')}>
+              {isBusy(busy, 'scene') ? 'מפתחים...' : 'הוספת תמונה'}
             </button>
           </form>
           <div className="flex flex-wrap items-center gap-3 border-t-[3px] border-ink pt-4">
-            <button className="btn btn-sm" disabled={busy === 'wall'} onClick={() => run('wall', () => api('/api/admin/rebuild-wall', { method: 'POST' }).then(() => 'הקיר נבנה מחדש.'))}>
-              {busy === 'wall' ? 'בונים...' : 'בנייה מחדש של הקיר'}
+            <button className="btn btn-sm" disabled={isBusy(busy, 'wall')} onClick={() => run('wall', () => api('/api/admin/rebuild-wall', { method: 'POST' }).then(() => 'הקיר נבנה מחדש.'))}>
+              {isBusy(busy, 'wall') ? 'בונים...' : 'בנייה מחדש של הקיר'}
             </button>
             <p className="text-sm opacity-70">הקיר הוא לוח דיוקנאות שנוצר אוטומטית מכל מי שיש לו פרופיל. בנו אותו מחדש אחרי שינויים בשמות או בתמונות.</p>
           </div>
@@ -518,7 +523,7 @@ export default function Admin() {
               </label>
               <input id="people-add" className="field" dir="auto" placeholder="שם מלא" value={newName} onChange={(e) => setNewName(e.target.value)} />
             </div>
-            <button className="btn shrink-0" disabled={newName.trim().length < 2 || busy === 'person'}>
+            <button className="btn shrink-0" disabled={newName.trim().length < 2 || isBusy(busy, 'person')}>
               הוספה
             </button>
           </form>
@@ -544,7 +549,7 @@ export default function Admin() {
               <textarea className="field pixel min-h-32 text-lg" dir="auto" value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={'name,former_name,city\n...'} />
               <button
                 className="btn btn-sm"
-                disabled={!csv.trim() || busy === 'csv'}
+                disabled={!csv.trim() || isBusy(busy, 'csv')}
                 onClick={() =>
                   run('csv', async () => {
                     const result = await api<{ added: number; skipped: string[] }>('/api/admin/import-csv', { body: csv })
@@ -553,7 +558,7 @@ export default function Admin() {
                   })
                 }
               >
-                {busy === 'csv' ? 'מייבאים...' : 'ייבוא'}
+                {isBusy(busy, 'csv') ? 'מייבאים...' : 'ייבוא'}
               </button>
             </div>
           </details>

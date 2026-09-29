@@ -1,7 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Scene, Tag } from '../web/src/api.ts'
+import { BACKUP_DESCRIPTION } from '../web/src/adminBackup.ts'
+import { finished, isBusy, started, type Busy } from '../web/src/adminBusy.ts'
 import { isTypingTarget } from '../web/src/adminKeys.ts'
 import { oneAtATime } from '../web/src/adminOnce.ts'
 import { nextLive, previousLive } from '../web/src/adminQueue.ts'
+import { fetchImageBlob } from '../web/src/fetchImage.ts'
+import { landOnPerson, yearbookPath } from '../web/src/personLink.ts'
+import { RELOAD_FAILED, saveThenReload } from '../web/src/taggerSave.ts'
 
 // The tests run without a DOM, so this stands in for an element: `closest` walks up the parents like the browser's,
 // matching tag names, [attribute] and [attribute="value"] selectors and :not(), and like the browser's it fails when
@@ -144,5 +150,135 @@ describe('one roster action at a time', () => {
     const next = vi.fn(async () => {})
     await once(next)
     expect(next).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('admin page busy flags', () => {
+  it('keeps the CSV import busy while adding a person starts and finishes', () => {
+    let busy: Busy = {}
+    busy = started(busy, 'csv')
+    busy = started(busy, 'person')
+    busy = finished(busy, 'person')
+    expect(isBusy(busy, 'csv')).toBe(true)
+    expect(isBusy(busy, 'person')).toBe(false)
+
+    busy = finished(busy, 'csv')
+    expect(isBusy(busy, 'csv')).toBe(false)
+  })
+
+  it('stays busy until both runs of the same action are done', () => {
+    let busy: Busy = {}
+    busy = started(busy, 'delete')
+    busy = started(busy, 'delete')
+    busy = finished(busy, 'delete')
+    expect(isBusy(busy, 'delete')).toBe(true)
+    busy = finished(busy, 'delete')
+    expect(isBusy(busy, 'delete')).toBe(false)
+  })
+
+  it('returns new state instead of changing the old one, so React sees the change', () => {
+    const before: Busy = {}
+    const after = started(before, 'wall')
+    expect(before).toEqual({})
+    expect(isBusy(after, 'wall')).toBe(true)
+    expect(finished(after, 'wall')).toEqual({})
+    expect(isBusy(after, 'wall')).toBe(true)
+  })
+
+  it('knows nothing is busy at the start', () => {
+    expect(isBusy({}, 'scene')).toBe(false)
+  })
+})
+
+describe('backup description', () => {
+  // Every part of GET /api/admin/export (server/admin.ts), by its key in the file.
+  const included = {
+    people: 'הפרופילים',
+    person_photos: 'רשימת התמונות האישיות',
+    scenes: 'התמונות הקבוצתיות',
+    tags: 'תיוגי הפנים',
+    quotes: 'הציטוטים',
+    quote_comments: 'התגובות',
+    quote_reactions: 'תגובות האימוג׳י',
+    tapes: 'הקלטות',
+    videos: 'הסרטונים',
+    credits: 'רשימת התודות',
+  }
+
+  it('names everything the export holds', () => {
+    for (const phrase of Object.values(included)) expect(BACKUP_DESCRIPTION).toContain(phrase)
+  })
+
+  it('says what stays out of it', () => {
+    for (const phrase of ['בלי קבצי התמונות', 'קודים אישיים', 'קישורי עריכה', 'בלי פתקים', 'בלי משוב']) expect(BACKUP_DESCRIPTION).toContain(phrase)
+  })
+})
+
+describe('tagger save and reload', () => {
+  it('reports the saved value when the save and the reload both work', async () => {
+    const reload = vi.fn(async () => {})
+    expect(await saveThenReload(async () => 3, reload)).toEqual({ status: 'done', value: 3 })
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it("passes on the server's reason when the save fails, and does not reload", async () => {
+    const reload = vi.fn(async () => {})
+    const result = await saveThenReload(() => Promise.reject(new Error('המסגרת לא נמצאה')), reload)
+    expect(result).toEqual({ status: 'not-saved', error: 'המסגרת לא נמצאה' })
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  it('keeps the save when only the reload fails, without the browser error', async () => {
+    const result = await saveThenReload(async () => 5, () => Promise.reject(new TypeError('Failed to fetch')))
+    expect(result).toEqual({ status: 'not-reloaded', value: 5 })
+    expect(JSON.stringify(result)).not.toContain('Failed to fetch')
+  })
+
+  it('explains a failed reload in Hebrew, saying the change was kept', () => {
+    expect(RELOAD_FAILED).toMatch(/[\u0590-\u05FF]/)
+    expect(RELOAD_FAILED).toContain('נשמר')
+  })
+})
+
+describe('face detection image download', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('hands back the picture when the download works', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob(['jpeg bytes'], { type: 'image/jpeg' }))))
+    const blob = await fetchImageBlob('/media/scenes/1/scene.jpg')
+    expect(blob.type).toBe('image/jpeg')
+    expect(await blob.text()).toBe('jpeg bytes')
+  })
+
+  it('fails in Hebrew when the server answers with an error, instead of decoding the error page', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('Not found', { status: 404 })))
+    await expect(fetchImageBlob('/media/scenes/1/scene.jpg')).rejects.toThrow(/[\u0590-\u05FF]/)
+  })
+})
+
+describe('deep link to a person', () => {
+  const tag = (id: number, sceneId: number, personId: number | null): Tag => ({ id, sceneId, personId, x: 0, y: 0, w: 10, h: 10, caption: null, classLabel: null, staff: false })
+  const scene = (id: number, tags: Tag[]): Scene => ({ id, slug: `s${id}`, title: `S${id}`, kind: 'group', year: null, width: 100, height: 100, dzi: '', tags })
+  const scenes = [scene(1, [tag(11, 1, 7)]), scene(2, [tag(21, 2, 8), tag(22, 2, 7)])]
+
+  it('flies to the face when the scene on screen shows the person', () => {
+    expect(landOnPerson(8, scenes[1], scenes)).toEqual({ focus: 21 })
+  })
+
+  it('moves to a scene that shows the person, replacing the link so back does not bounce', () => {
+    expect(landOnPerson(8, scenes[0], scenes)).toEqual({ redirect: ['/p/8?s=s2', { replace: true }] })
+  })
+
+  it('stays put when no scene shows the person', () => {
+    expect(landOnPerson(9, scenes[0], scenes)).toBeNull()
+  })
+
+  it('builds the yearbook address for a person or nobody, with or without a scene', () => {
+    expect(yearbookPath(8, 's2')).toBe('/p/8?s=s2')
+    expect(yearbookPath(null, 's1')).toBe('/?s=s1')
+    expect(yearbookPath(8, undefined)).toBe('/p/8')
+    expect(yearbookPath(undefined, undefined)).toBe('/')
   })
 })

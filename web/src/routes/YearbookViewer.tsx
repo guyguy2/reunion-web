@@ -4,6 +4,7 @@ import { faceUrl, matchesPerson, type Person, type Scene, type Tag } from '../ap
 import { useStore } from '../store.tsx'
 import SceneViewer from '../components/SceneViewer.tsx'
 import { PersonPanel, UnknownPanel } from '../components/PersonPanel.tsx'
+import { landOnPerson, yearbookPath } from '../personLink.ts'
 
 function SearchBox({ onPick }: { onPick: (person: Person) => void }) {
   const { people, scenes } = useStore()
@@ -87,17 +88,17 @@ export default function YearbookViewer() {
   const [focus, setFocus] = useState<{ tagId: number; nonce: number } | null>(null)
 
   const go = (target: { personId?: number | null; scene?: Scene }) => {
-    const slug = (target.scene ?? scene)?.slug
-    navigate(`${target.personId ? `/p/${target.personId}` : '/'}${slug ? `?s=${slug}` : ''}`)
+    navigate(yearbookPath(target.personId, (target.scene ?? scene)?.slug))
   }
 
   // Deep link or search result: make sure we are on a scene that shows this person, then fly to them.
   const personTag = person && scene?.tags.find((t) => t.personId === person.id)
   useEffect(() => {
     if (!person || !scene) return
-    if (personTag) return setFocus({ tagId: personTag.id, nonce: Date.now() })
-    const other = scenes.find((s) => s.tags.some((t) => t.personId === person.id))
-    if (other) go({ personId: person.id, scene: other })
+    const landing = landOnPerson(person.id, scene, scenes)
+    if (!landing) return
+    if ('focus' in landing) setFocus({ tagId: landing.focus, nonce: Date.now() })
+    else navigate(...landing.redirect)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [person?.id, scene?.id, personTag?.id])
 

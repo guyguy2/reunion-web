@@ -1,4 +1,5 @@
 import { FaceDetector, FilesetResolver } from '@mediapipe/tasks-vision'
+import { fetchImageBlob } from './fetchImage.ts'
 
 export interface Box {
   x: number
@@ -33,51 +34,56 @@ function overlap(a: Box, b: Box): number {
 }
 
 export async function detectFaces(imageUrl: string, existing: Box[], onProgress: (fraction: number) => void): Promise<Box[]> {
-  const vision = await FilesetResolver.forVisionTasks(WASM)
-  const detector = await FaceDetector.createFromOptions(vision, {
-    baseOptions: { modelAssetPath: MODEL },
-    runningMode: 'IMAGE',
-    minDetectionConfidence: 0.6,
-  })
   // createImageBitmap decodes off the main thread and, unlike <img>.decode(), also works in a background tab.
-  const image = await createImageBitmap(await (await fetch(imageUrl)).blob())
-
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  const image = await createImageBitmap(await fetchImageBlob(imageUrl))
   const found: (Box & { score: number })[] = []
-  const total = WINDOWS.reduce((sum, size) => {
-    const step = size * (1 - OVERLAP)
-    return sum + Math.ceil(image.width / step) * Math.ceil(image.height / step)
-  }, 0)
-  let done = 0
+  // The picture and the model are let go of even when loading the model or a scan fails.
+  let detector: FaceDetector | undefined
+  try {
+    const vision = await FilesetResolver.forVisionTasks(WASM)
+    detector = await FaceDetector.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: MODEL },
+      runningMode: 'IMAGE',
+      minDetectionConfidence: 0.6,
+    })
 
-  for (const size of WINDOWS) {
-    const step = Math.round(size * (1 - OVERLAP))
-    canvas.width = canvas.height = 256
-    const scale = size / 256
-    for (let top = 0; top < image.height; top += step) {
-      for (let left = 0; left < image.width; left += step) {
-        ctx.fillStyle = '#000'
-        ctx.fillRect(0, 0, 256, 256)
-        ctx.drawImage(image, left, top, size, size, 0, 0, 256, 256)
-        for (const detection of detector.detect(canvas).detections) {
-          const box = detection.boundingBox
-          if (!box) continue
-          const w = box.width * scale
-          const h = box.height * scale
-          // Skip faces cut off by the window edge; a neighboring window sees them whole.
-          if (box.originX < 2 || box.originY < 2 || box.originX + box.width > 254 || box.originY + box.height > 254) continue
-          found.push({ x: left + box.originX * scale, y: top + box.originY * scale, w, h, score: detection.categories[0]?.score ?? 0 })
-        }
-        if (++done % 25 === 0) {
-          onProgress(done / total)
-          await breathe()
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+    const total = WINDOWS.reduce((sum, size) => {
+      const step = size * (1 - OVERLAP)
+      return sum + Math.ceil(image.width / step) * Math.ceil(image.height / step)
+    }, 0)
+    let done = 0
+
+    for (const size of WINDOWS) {
+      const step = Math.round(size * (1 - OVERLAP))
+      canvas.width = canvas.height = 256
+      const scale = size / 256
+      for (let top = 0; top < image.height; top += step) {
+        for (let left = 0; left < image.width; left += step) {
+          ctx.fillStyle = '#000'
+          ctx.fillRect(0, 0, 256, 256)
+          ctx.drawImage(image, left, top, size, size, 0, 0, 256, 256)
+          for (const detection of detector.detect(canvas).detections) {
+            const box = detection.boundingBox
+            if (!box) continue
+            const w = box.width * scale
+            const h = box.height * scale
+            // Skip faces cut off by the window edge; a neighboring window sees them whole.
+            if (box.originX < 2 || box.originY < 2 || box.originX + box.width > 254 || box.originY + box.height > 254) continue
+            found.push({ x: left + box.originX * scale, y: top + box.originY * scale, w, h, score: detection.categories[0]?.score ?? 0 })
+          }
+          if (++done % 25 === 0) {
+            onProgress(done / total)
+            await breathe()
+          }
         }
       }
     }
+  } finally {
+    detector?.close()
+    image.close()
   }
-  detector.close()
-  image.close()
 
   const kept: Box[] = []
   for (const candidate of found.sort((a, b) => b.score - a.score)) {

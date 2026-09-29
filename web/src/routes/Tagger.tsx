@@ -5,6 +5,7 @@ import '@annotorious/openseadragon/annotorious-openseadragon.css'
 import { api, faceUrl, matchesPerson, type Scene, type Tag } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { detectFaces } from '../detectFaces.ts'
+import { RELOAD_FAILED, saveThenReload } from '../taggerSave.ts'
 
 function toAnnotation(tag: Tag): ImageAnnotation {
   const id = String(tag.id)
@@ -44,6 +45,7 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
   const [query, setQuery] = useState('')
   const [progress, setProgress] = useState<number | null>(null)
   const [message, setMessage] = useState('')
+  const [reloadFailed, setReloadFailed] = useState(false)
 
   const selected = scene.tags.find((t) => t.id === selectedId) ?? null
   const faces = scene.tags.filter((t) => !t.staff).length
@@ -127,28 +129,34 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
 
   async function act(action: () => Promise<unknown>, onError?: () => void) {
     setMessage('')
-    let saved = false
-    try {
-      await action()
-      saved = true
-      await refresh()
-    } catch (err) {
-      setMessage((err as Error).message)
-      // Only a failed save is undone. If just the reload failed, the server kept the change the canvas shows.
-      if (!saved) onError?.()
+    setReloadFailed(false)
+    const result = await saveThenReload(action, refresh)
+    // Only a failed save is undone. If just the reload failed, the server kept the change the canvas shows.
+    if (result.status === 'not-saved') {
+      setMessage(result.error)
+      onError?.()
     }
+    if (result.status === 'not-reloaded') setReloadFailed(true)
+  }
+
+  function retryReload() {
+    setReloadFailed(false)
+    refresh().catch(() => setReloadFailed(true))
   }
 
   async function autoDetect() {
     setProgress(0)
     setMessage('')
+    setReloadFailed(false)
     try {
-      const boxes = await detectFaces(scene.dzi.replace(/scene\.dzi$/, 'scene.jpg'), scene.tags, setProgress)
-      if (boxes.length) await api(`/api/admin/scenes/${scene.id}/tags/batch`, { json: { boxes } })
-      await refresh()
-      setMessage(`נמצאו ${boxes.length} פנים חדשות. בדקו את התמונה ותקנו ידנית מה שפוספס.`)
-    } catch (err) {
-      setMessage(`זיהוי הפנים נכשל: ${(err as Error).message}`)
+      const result = await saveThenReload(async () => {
+        const boxes = await detectFaces(scene.dzi.replace(/scene\.dzi$/, 'scene.jpg'), scene.tags, setProgress)
+        if (boxes.length) await api(`/api/admin/scenes/${scene.id}/tags/batch`, { json: { boxes } })
+        return boxes.length
+      }, refresh)
+      if (result.status === 'not-saved') setMessage(`זיהוי הפנים נכשל: ${result.error}`)
+      else setMessage(`נמצאו ${result.value} פנים חדשות. בדקו את התמונה ותקנו ידנית מה שפוספס.`)
+      if (result.status === 'not-reloaded') setReloadFailed(true)
     } finally {
       setProgress(null)
     }
@@ -206,6 +214,14 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
           </button>
         </div>
         {message && <p className="rounded-lg border-[3px] border-ink bg-sun p-2 text-sm font-bold">{message}</p>}
+        {reloadFailed && (
+          <div className="flex items-center gap-2">
+            <p className="flex-1 text-sm font-bold text-pink">{RELOAD_FAILED}</p>
+            <button className="btn btn-plain btn-sm shrink-0" onClick={retryReload}>
+              נסו שוב
+            </button>
+          </div>
+        )}
 
         {selected ? (
           <div className="space-y-3 border-t-[3px] border-ink pt-4">
