@@ -137,7 +137,14 @@ test.describe('class photo viewer', () => {
     const { plain } = await demo(page)
     await openViewer(page)
     const target = face(page, plain[0].name)
-    const whole = await width(target)
+    // The photo may still be settling into place when the first face shows; measure once two readings agree.
+    let whole = 0
+    await expect.poll(async () => {
+      const now = await width(target)
+      const settled = now === whole
+      whole = now
+      return settled
+    }).toBe(true)
 
     await page.getByRole('button', { name: 'הגדלה' }).click()
     await expect.poll(() => width(target)).toBeGreaterThan(whole * 1.5)
@@ -311,15 +318,18 @@ test.describe('keyboard', () => {
   test('Tab enters the faces, arrows move between them, Enter opens the panel and Escape closes it', async ({ page }) => {
     await login(page, 'member')
     const { group, byId } = await demo(page)
-    const nameAt = (i: number) => byId.get(group.tags[i].personId!)!.name
+    // The seed lays the faces out in aligned rows, so the top row is the faces with the smallest y. The keyboard enters
+    // at its right end (where a Hebrew reader starts), and ArrowLeft goes to the next face along that row.
+    const topRow = group.tags.filter((t) => t.y === Math.min(...group.tags.map((x) => x.y))).sort((a, b) => b.x - a.x)
+    const nameOf = (t: Tag) => byId.get(t.personId!)!.name
     await openViewer(page)
     await page.mouse.click(1, 1)
 
     // The one face in the tab order is the right end of the top row, where a Hebrew reader starts.
     const entry = await tabToFace(page)
-    expect(entry).toBe(nameAt(11))
+    expect(entry).toBe(nameOf(topRow[0]))
     await page.keyboard.press('ArrowLeft')
-    expect(await focusedFace(page)).toBe(nameAt(10))
+    expect(await focusedFace(page)).toBe(nameOf(topRow[1]))
     await page.keyboard.press('ArrowRight')
     expect(await focusedFace(page)).toBe(entry)
     await page.keyboard.press('ArrowDown')
@@ -534,7 +544,9 @@ test.describe('phone width', () => {
     await expect(dialog.getByRole('heading', { name: person.name })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'ספר המחזור' })).toBeVisible()
 
-    await page.touchscreen.tap(195, 20)
+    // Above the sheet's top edge is the backdrop.
+    const sheet = (await dialog.boundingBox())!
+    await page.touchscreen.tap(sheet.x + sheet.width / 2, sheet.y / 2)
     await expect(dialog).toHaveCount(0)
     await expect(page).toHaveURL(/\/$/)
   })
@@ -570,7 +582,8 @@ test.describe('image load failure', () => {
   })
 })
 
-// From here on the tests change the data, so they run last and in this order.
+// From here on the tests change the data, so they run last and in this order. This describe and the next must stay
+// last in the file: adding dated posters (below) changes the default class photo that earlier tests count on.
 test.describe.serial('naming a face nobody has identified', () => {
   test('a member adds a new name: it shows on the face, after a reload and to another member, and organizers see it', async ({ page, anotherUser }) => {
     await login(page, 'member')
@@ -643,7 +656,7 @@ test.describe.serial('naming a face nobody has identified', () => {
 
 // Class, year, gender and sort menus show up only once the site has dated posters with classes and people with a
 // gender. The demo has neither, so an organizer adds them through the admin API first. Two dated posters make the
-// newest one the default class photo, which is why this block is the last one.
+// newest one the default class photo, which is why this block must stay the last one in the file.
 test.describe.serial('friends filters', () => {
   const CLASS_A = 'י"ב-1'
   const CLASS_B = 'י"ב-2'
