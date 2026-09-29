@@ -9,6 +9,7 @@ import { listCredits, saveCredits } from './credits.ts'
 import { loadDemoData, SiteNotEmptyError } from './demo.ts'
 import { listFeedback } from './feedback.ts'
 import { readJson } from './http.ts'
+import { createSignInLink } from './recovery.ts'
 import { exportRoster, importRoster, markPersonStaff, mergePeople, parseRoster } from './roster.ts'
 
 function parseBox(body: Record<string, unknown>) {
@@ -92,6 +93,19 @@ export function adminRoutes(config: Config, db: Db, hooks?: { clearPinLockout(pe
       return c.json({ error: (err as Error).message }, 400)
     }
     return c.json({ ok: true })
+  })
+
+  // For a classmate with no email who forgot their code: the organizer passes the link on by hand. Unlike a reset,
+  // the code, the devices already signed in and everything on the profile stay as they are.
+  admin.post('/people/:id/signin-link', (c) => {
+    const person = getPerson(db, Number(c.req.param('id')))
+    if (!person) return c.json({ error: 'Not found' }, 404)
+    if (!person.claimed_at) return c.json({ error: 'אף אחד עדיין לא לקח בעלות על הפרופיל הזה, אז אין לו קישור כניסה.' }, 409)
+    if (!config.publicUrl) {
+      console.error(`Sign-in link for person ${person.id} not made: PUBLIC_URL is not set, so the link would have no address`)
+      return c.json({ error: 'משהו השתבש' }, 500)
+    }
+    return c.json({ ...createSignInLink(db, person, config.publicUrl), name: person.name })
   })
 
   admin.post('/people/:id/photo/:kind', async (c) => {

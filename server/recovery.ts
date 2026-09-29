@@ -14,6 +14,22 @@ export function maskEmail(email: string): string {
   return `${user.slice(0, 1)}***@${domain}`
 }
 
+/**
+ * Makes a one-time sign-in link for the profile, without sending it anywhere. Any earlier link for the profile stops
+ * working, so only the newest one is ever out there. `expiresAt` is ISO 8601 in UTC.
+ */
+export function createSignInLink(db: Db, person: PersonRow, baseUrl: string): { url: string; expiresAt: string } {
+  const token = crypto.randomBytes(24).toString('base64url')
+  db.prepare('DELETE FROM recovery_tokens WHERE person_id = ?').run(person.id)
+  const { expiresAt } = db
+    .prepare(
+      `INSERT INTO recovery_tokens (token_hash, person_id, expires_at) VALUES (?, ?, datetime('now', ?))
+       RETURNING strftime('%Y-%m-%dT%H:%M:%SZ', expires_at) AS expiresAt`,
+    )
+    .get(sha256(token), person.id, `+${LINK_MINUTES} minutes`) as { expiresAt: string }
+  return { url: `${baseUrl}/signin/${token}`, expiresAt }
+}
+
 /** Emails a one-time sign-in link to the address on the profile. Throws a user-facing message when it can't. */
 export async function sendSignInLink(db: Db, person: PersonRow, mail: Mailer | null, baseUrl: string): Promise<string> {
   if (!mail) throw new Error('שליחת מיילים עוד לא הוגדרה באתר. בקשו מהמארגנים לאפס את הפרופיל.')
@@ -23,12 +39,8 @@ export async function sendSignInLink(db: Db, person: PersonRow, mail: Mailer | n
     .get(person.id, `-${COOLDOWN_MINUTES} minutes`)
   if (recent) throw new Error('כבר שלחנו קישור לפני רגע. בדקו את תיבת הדואר (וגם את הספאם).')
 
-  const token = crypto.randomBytes(24).toString('base64url')
-  db.prepare(`INSERT INTO recovery_tokens (token_hash, person_id, expires_at) VALUES (?, ?, datetime('now', ?))`).run(
-    sha256(token),
-    person.id,
-    `+${LINK_MINUTES} minutes`,
-  )
+  const { url } = createSignInLink(db, person, baseUrl)
+  const token = url.slice(url.lastIndexOf('/') + 1)
   const deadline = new AbortController()
   const timer = setTimeout(() => deadline.abort(new DOMException('The email took longer than a minute', 'TimeoutError')), SEND_DEADLINE_MS)
   try {
@@ -39,7 +51,7 @@ export async function sendSignInLink(db: Db, person: PersonRow, mail: Mailer | n
         `שלום ${person.name},`,
         '',
         'ביקשת להיכנס לפרופיל שלך. זה הקישור:',
-        `${baseUrl}/signin/${token}`,
+        url,
         '',
         `הקישור עובד פעם אחת בלבד, במשך ${LINK_MINUTES} דקות. אחרי הכניסה אפשר לבחור קוד אישי חדש.`,
         'אם לא ביקשת את זה, אפשר פשוט להתעלם מהמייל.',

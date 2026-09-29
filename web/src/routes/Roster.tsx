@@ -5,6 +5,7 @@ import { possibleDuplicates } from '../roster.ts'
 import { isTypingTarget } from '../adminKeys.ts'
 import { oneAtATime } from '../adminOnce.ts'
 import { nextLive, previousLive } from '../adminQueue.ts'
+import SignInLink from '../components/SignInLink.tsx'
 
 const VIEWS = [
   { id: 'review', label: 'אחד אחד' },
@@ -147,6 +148,7 @@ export default function Roster() {
   const answer = (p: Person, gender: 'm' | 'f') => once(() => run(() => saveName(p).then(() => patchPerson(p.id, { gender })), true))
 
   // B for boy, G for girl, arrows to move. Not while typing a name or feedback, or while a key is held down.
+  // Moving waits while an answer saves, since the answer moves on by itself once saved.
   useEffect(() => {
     if (view !== 'review' || !current) return
     const onKey = (e: KeyboardEvent) => {
@@ -154,8 +156,8 @@ export default function Roster() {
       const key = e.key.toLowerCase()
       if (key === 'b' || key === 'נ') answer(current, 'm')
       else if (key === 'g' || key === 'ע') answer(current, 'f')
-      else if (e.key === 'ArrowLeft') setIndex(Math.min(at + 1, queue?.length ?? 0))
-      else if (e.key === 'ArrowRight' && before >= 0) setIndex(before)
+      else if (e.key === 'ArrowLeft' && !busy) setIndex(Math.min(at + 1, queue?.length ?? 0))
+      else if (e.key === 'ArrowRight' && before >= 0 && !busy) setIndex(before)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -186,7 +188,7 @@ export default function Roster() {
       {view === 'review' && (
         <div className="space-y-4">
           <label className="flex items-center gap-2 text-sm font-bold">
-            <input type="checkbox" className="size-5" checked={onlyOpen} onChange={(e) => (setOnlyOpen(e.target.checked), setQueue(null), setIndex(0))} />
+            <input type="checkbox" className="size-5" checked={onlyOpen} disabled={busy} onChange={(e) => (setOnlyOpen(e.target.checked), setQueue(null), setIndex(0))} />
             רק מי שעוד לא סומן כבן או בת
           </label>
           {!current ? (
@@ -230,16 +232,17 @@ export default function Roster() {
                 </button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button className="btn btn-plain btn-sm" disabled={before < 0} onClick={() => setIndex(before)}>
+                <button className="btn btn-plain btn-sm" disabled={before < 0 || busy} onClick={() => setIndex(before)}>
                   הקודם
                 </button>
-                <button className="btn btn-plain btn-sm" onClick={() => setIndex(at + 1)}>
+                <button className="btn btn-plain btn-sm" disabled={busy} onClick={() => setIndex(at + 1)}>
                   דילוג
                 </button>
-                <button className="btn btn-plain btn-sm ms-auto" disabled={current.claimed} onClick={() => run(() => api(`/api/admin/people/${current.id}/staff`, { method: 'POST' }), true)}>
+                <button className="btn btn-plain btn-sm ms-auto" disabled={current.claimed || busy} onClick={() => once(() => run(() => api(`/api/admin/people/${current.id}/staff`, { method: 'POST' }), true))}>
                   זה איש צוות, להסתיר
                 </button>
               </div>
+              {current.claimed && <SignInLink person={current} once={once} busy={busy} />}
               <p className="hidden text-xs opacity-70 sm:block">מקלדת: G בת, B בן, חצים למעבר.</p>
             </div>
           )}
