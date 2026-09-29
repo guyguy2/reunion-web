@@ -268,7 +268,7 @@ test.describe('people', () => {
     const csv = [
       'name,nickname,email,show_email,phone,show_phone,in_memoriam',
       `${hidden},Hid,hid${sfx}@example.com,no,050-1234567,y,`,
-      `${shown},,shown${sfx}@example.com,y,,no,yes`,
+      `${shown},,shown${sfx}@example.com,y,050-7654321,no,yes`,
       `${existing},,,,,,`,
       `${bad},,not-an-email,,,,`,
     ].join('\n')
