@@ -43,13 +43,27 @@ async function aDemoClaimed(page: Page): Promise<Listed> {
   return person!
 }
 
-// Profiles claimed through the API by the running test. They are released afterwards, so every test starts from the
-// same pool of unclaimed demo profiles (there are only 40) and a later test cannot inherit an earlier one's claim.
-const claimedByTest: Owner[] = []
+// Demo profiles the running test claimed, by the API or through the form. They are released afterwards, so every test
+// starts from the same pool of unclaimed demo profiles (there are only 40) and cannot inherit an earlier test's claim.
+// Profiles a test creates from scratch (POST /api/people) are not in the pool and are left as they are.
+const claimedByTest: { token: string }[] = []
 
 test.afterEach(async ({ page }) => {
-  for (const owner of claimedByTest.splice(0)) await page.request.delete('/api/me', { headers: { 'x-edit-token': owner.token } })
+  for (const owner of claimedByTest.splice(0)) {
+    try {
+      await page.request.delete('/api/me', { headers: { 'x-edit-token': owner.token } })
+    } catch {
+      // The page or context may already be gone after a timeout; the test's own failure is the one to report.
+    }
+  }
 })
+
+/** Registers the profile this browser just claimed through the form, for release after the test. */
+async function releaseLater(page: Page) {
+  const token = await page.evaluate(() => localStorage.getItem('reunion.editToken'))
+  expect(token, 'the edit token after claiming').toBeTruthy()
+  claimedByTest.push({ token: token! })
+}
 
 /** Claims the next free demo profile through the API (the claim form itself is covered by its own tests). Needs the member cookie. */
 async function claimByApi(page: Page, fields: { email?: string } = {}): Promise<Owner> {
@@ -88,8 +102,13 @@ async function png(color: string): Promise<Buffer> {
   return sharp({ create: { width: 48, height: 60, channels: 3, background: color } }).png().toBuffer()
 }
 
-const upload = async (page: Page, label: string, index: 'first' | 'last', color: string) =>
-  page.getByLabel(label)[index]().setInputFiles({ name: `${color}.png`, mimeType: 'image/png', buffer: await png(color) })
+/** One of the two photo sections of the Me page, found from its label (the section is its parent). */
+const photoSection = (page: Page, kind: 'now' | 'then') =>
+  page.getByText(kind === 'now' ? 'היום' : 'אז (לא חובה)', { exact: true }).locator('xpath=..')
+
+/** Adds a picture to a section; its button says "העלאת תמונה" while empty and "הוספת תמונה" after. */
+const upload = async (section: ReturnType<typeof photoSection>, color: string) =>
+  section.getByLabel(/העלאת תמונה|הוספת תמונה/).setInputFiles({ name: `${color}.png`, mimeType: 'image/png', buffer: await png(color) })
 
 const firstName = (name: string) => name.split(' ')[0]
 
@@ -119,6 +138,7 @@ test.describe('claiming a profile', () => {
     await claim.click()
 
     await expect(page).toHaveURL(/\/me\?welcome=1$/)
+    await releaseLater(page)
     const welcome = page.getByRole('dialog')
     await expect(welcome.getByRole('heading', { name: new RegExp(`, ${firstName(who.name)}!$`) })).toBeVisible()
     await expect(welcome.getByText('עוד לא ענית')).toBeVisible()
@@ -161,6 +181,7 @@ test.describe('claiming a profile', () => {
     await page.getByLabel('אימייל (לא חובה)').fill('claim.email@example.com')
     await page.getByRole('button', { name: 'זה הפרופיל שלי', exact: true }).click()
     await expect(page).toHaveURL(/\/me\?welcome=1$/)
+    await releaseLater(page)
     await closeWelcome(page)
     await expect(page.getByLabel('אימייל', { exact: true })).toHaveValue('claim.email@example.com')
   })
@@ -250,13 +271,14 @@ test.describe('editing the profile', () => {
 
     await page.getByLabel('כינוי').fill('Half typed')
     await page.getByLabel('מה קרה מאז?').fill('Not saved yet')
-    await upload(page, 'העלאת תמונה', 'first', '#2255cc')
-    await expect(page.getByText('הראשית')).toHaveCount(2)
+    const now = photoSection(page, 'now')
+    await upload(now, '#2255cc')
+    await expect(now.getByText('הראשית')).toBeVisible()
     // The upload reloads the profile, and the form keeps what was typed.
     await expect(page.getByLabel('כינוי')).toHaveValue('Half typed')
     await expect(page.getByLabel('מה קרה מאז?')).toHaveValue('Not saved yet')
 
-    // Nothing stores a draft in the browser: a reload starts over from what was saved.
+    // Pins today's behavior, not a requirement: nothing stores a draft in the browser, so a reload starts over from what was saved.
     await page.reload()
     await expect(page.getByLabel('שם', { exact: true })).toHaveValue(me.name)
     await expect(page.getByLabel('כינוי')).toHaveValue('')
@@ -405,17 +427,21 @@ test.describe('notes', () => {
     await expect(page.getByRole('form', { name: 'פתק לSam Sender' })).toBeVisible()
     await page.keyboard.press('Escape')
 
-    // Throwing one away asks first, and the other stays.
-    await page.getByRole('button', { name: 'לזרוק', exact: true }).last().click()
-    await page.getByRole('button', { name: 'להשאיר' }).click()
-    await expect(page.getByText('You never returned my mixtape')).toBeVisible()
-    await page.getByRole('button', { name: 'לזרוק', exact: true }).nth(1).click()
-    await page.getByRole('button', { name: 'לזרוק לפח' }).click()
-    const messages = page.getByText(/See you at the reunion|You never returned my mixtape/)
-    await expect(messages).toHaveCount(1)
+    // Throwing one away asks first, and only that note goes. A note's card is two levels above its text.
+    const cardOf = (message: string) => page.getByText(message).locator('xpath=../..')
+    const anonymousText = 'You never returned my mixtape'
+    const signedText = 'See you at the reunion, Sam here'
+    await cardOf(anonymousText).getByRole('button', { name: 'לזרוק', exact: true }).click()
+    await cardOf(anonymousText).getByRole('button', { name: 'להשאיר' }).click()
+    await expect(page.getByText(anonymousText)).toBeVisible()
+    await cardOf(anonymousText).getByRole('button', { name: 'לזרוק', exact: true }).click()
+    await cardOf(anonymousText).getByRole('button', { name: 'לזרוק לפח' }).click()
+    await expect(page.getByText(anonymousText)).toHaveCount(0)
+    await expect(page.getByText(signedText)).toBeVisible()
     await page.reload()
     await expect(page.getByText('פתקים שקיבלתם')).toBeVisible()
-    await expect(messages).toHaveCount(1)
+    await expect(page.getByText(signedText)).toBeVisible()
+    await expect(page.getByText(anonymousText)).toHaveCount(0)
   })
 
   test('a profile that nobody has claimed can still be sent a note', async ({ page }) => {
@@ -432,6 +458,7 @@ test.describe('notes', () => {
     // Whoever claims the profile later finds it waiting.
     const claim = await page.request.post(`/api/people/${who.id}/claim`, { data: { pin: PIN } })
     const { token } = await claim.json()
+    claimedByTest.push({ token })
     await signIn(page, { id: who.id, token })
     await page.goto('/')
     await expect(page.getByLabel('1 פתקים חדשים')).toBeVisible()
@@ -502,16 +529,21 @@ test.describe('photos', () => {
     await page.goto('/me')
 
     // The demo profile starts with one "then" photo and no "now" photo.
-    const remove = page.getByRole('button', { name: 'הסרה', exact: true })
-    await expect(remove).toHaveCount(1)
-    await expect(page.getByText('זה המקסימום (3).')).toHaveCount(0)
+    const now = photoSection(page, 'now')
+    const then = photoSection(page, 'then')
+    const removeNow = now.getByRole('button', { name: 'הסרה', exact: true })
+    const removeThen = then.getByRole('button', { name: 'הסרה', exact: true })
+    await expect(removeNow).toHaveCount(0)
+    await expect(removeThen).toHaveCount(1)
+    await expect(now.getByText('אפשר להוסיף עוד 3.')).toBeVisible()
 
-    await upload(page, 'העלאת תמונה', 'first', '#22aa66')
-    await expect(remove).toHaveCount(2)
-    await expect(page.getByText('הראשית')).toHaveCount(2)
-    // "Add another" now, for both kinds.
-    await upload(page, 'הוספת תמונה', 'last', '#aa3366')
-    await expect(remove).toHaveCount(3)
+    await upload(now, '#22aa66')
+    await expect(removeNow).toHaveCount(1)
+    await expect(now.getByText('הראשית')).toBeVisible()
+    await expect(now.getByText('אפשר להוסיף עוד 2.')).toBeVisible()
+    await upload(then, '#aa3366')
+    await expect(removeThen).toHaveCount(2)
+    await expect(then.getByText('אפשר להוסיף עוד 1.')).toBeVisible()
 
     const bob = await anotherUser()
     await login(bob, 'member')
@@ -521,19 +553,19 @@ test.describe('photos', () => {
     await expect(bob.getByRole('img', { name: 'אז', exact: true })).toBeVisible()
     await expect(bob.getByRole('heading', { name: 'עוד תמונות' })).toBeVisible()
 
-    // The "now" photo comes first in the page, so its remove button does too.
-    await remove.first().click()
-    await expect(remove).toHaveCount(2)
+    await removeNow.click()
+    await expect(removeNow).toHaveCount(0)
     await page.reload()
-    await expect(remove).toHaveCount(2)
+    await expect(removeNow).toHaveCount(0)
+    await expect(removeThen).toHaveCount(2)
     await bob.reload()
     await expect(bob.getByRole('heading', { name: me.name })).toBeVisible()
     await expect(bob.getByRole('img', { name: 'היום' })).toHaveCount(0)
     await expect(bob.getByRole('heading', { name: 'עוד תמונות' })).toBeVisible()
 
-    // Removing the extra "then" photo leaves the original one.
-    await remove.last().click()
-    await expect(remove).toHaveCount(1)
+    // Removing the one just added (the last in its row) leaves the original "then" photo.
+    await removeThen.last().click()
+    await expect(removeThen).toHaveCount(1)
     await bob.reload()
     await expect(bob.getByRole('heading', { name: me.name })).toBeVisible()
     await expect(bob.getByRole('heading', { name: 'עוד תמונות' })).toHaveCount(0)
@@ -600,13 +632,15 @@ test.describe('joining and leaving', () => {
     const taken = await aDemoClaimed(page)
     await page.goto('/me')
 
+    // A new person stays in the roster, so each run uses its own name.
+    const zed = `Zed Latecomer ${Date.now().toString(36)}`
     const nameField = page.getByLabel('השם שלך')
     const create = page.getByRole('button', { name: 'יצירת הפרופיל שלי' })
     await expect(create).toBeDisabled()
     // A name that a claimed profile already has gets a hint to sign in instead.
     await nameField.fill(taken.name)
     await expect(page.getByText(`כבר יש פרופיל בשם ${taken.name}.`)).toBeVisible()
-    await nameField.fill('Zed Latecomer')
+    await nameField.fill(zed)
     await expect(page.getByText('כבר יש פרופיל בשם')).toHaveCount(0)
     await page.getByLabel('בחרו קוד אישי').fill('abc')
     await expect(create).toBeDisabled()
@@ -614,15 +648,15 @@ test.describe('joining and leaving', () => {
     await create.click()
 
     await closeWelcome(page)
-    await expect(page.getByLabel('שם', { exact: true })).toHaveValue('Zed Latecomer')
+    await expect(page.getByLabel('שם', { exact: true })).toHaveValue(zed)
     await expect(page.getByText('יש לכם קוד אישי.')).toBeVisible()
 
     const bob = await anotherUser()
     await login(bob, 'member')
     await bob.goto('/friends')
-    await bob.getByLabel('חיפוש בוגרים לפי שם').fill('Latecomer')
-    await bob.getByRole('button', { name: /Zed Latecomer/ }).click()
-    await expect(bob.getByRole('dialog').getByRole('heading', { name: 'Zed Latecomer' })).toBeVisible()
+    await bob.getByLabel('חיפוש בוגרים לפי שם').fill(zed)
+    await bob.getByRole('button', { name: new RegExp(zed) }).click()
+    await expect(bob.getByRole('dialog').getByRole('heading', { name: zed })).toBeVisible()
     await expect(bob.getByRole('button', { name: 'זה הפרופיל שלי. כניסה עם הקוד האישי' })).toBeVisible()
   })
 
@@ -664,6 +698,7 @@ test.describe('joining and leaving', () => {
     await bob.getByLabel('בחרו קוד אישי').fill('second-owner-1')
     await bob.getByRole('button', { name: 'זה הפרופיל שלי', exact: true }).click()
     await expect(bob).toHaveURL(/\/me\?welcome=1$/)
+    await releaseLater(bob)
     await closeWelcome(bob)
     await expect(bob.getByLabel('שם', { exact: true })).toHaveValue(me.name)
     await expect(bob.getByLabel('איפה גרים היום?')).toHaveValue('')
