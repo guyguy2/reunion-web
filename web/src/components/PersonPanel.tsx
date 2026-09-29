@@ -386,6 +386,7 @@ export function UnknownPanel({ tag, onClose, onNamed, layout }: { tag: Tag; onCl
             </div>
           )}
           {mode === 'me' && <NewOwnerFields value={owner} onChange={setOwner} />}
+          {mode === 'me' && <ClaimNudge email={owner.email} />}
           <button className="btn w-full" disabled={busy || name.trim().length < 2 || (mode === 'me' && !newOwnerReady(owner))}>
             {mode === 'me' ? 'יצירת הפרופיל שלי' : 'הוספת השם'}
           </button>

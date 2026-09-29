@@ -52,6 +52,18 @@ export function firstFace<T extends Box>(tags: T[]): T | null {
   return face
 }
 
+/**
+ * Whether a face got focus from the keyboard rather than a click. A browser too old to know `:focus-visible` throws;
+ * then it counts as keyboard, since moving the picture to a clicked face does no harm.
+ */
+export function focusVisible(el: Element): boolean {
+  try {
+    return el.matches(':focus-visible')
+  } catch {
+    return true
+  }
+}
+
 /** Over the viewer when the class photo could not be opened. */
 export function SceneOpenFailed({ onRetry }: { onRetry: () => void }) {
   return (

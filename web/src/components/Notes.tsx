@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { api, type Note, type Person } from '../api.ts'
+import { api, ApiError, type Note, type Person } from '../api.ts'
 import { attempt, useStore } from '../store.tsx'
 import { LAYER, useEscape } from '../useEscape.ts'
 
@@ -192,6 +192,15 @@ export function noteAction(action: () => Promise<unknown>, reload: () => Promise
   })
 }
 
+/** Throwing away a note that is already gone (a double tap, or another device got there first) counts as done. */
+export async function ignoreGone(request: Promise<unknown>): Promise<void> {
+  try {
+    await request
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 404)) throw err
+  }
+}
+
 /** Your notes, newest first. Opening one marks it read, which also clears the badge on the tab. */
 export function NotesInbox() {
   const { setUnreadNotes, personById } = useStore()
@@ -232,7 +241,7 @@ export function NotesInbox() {
             note={note}
             index={i}
             onOpen={() => act(() => api(`/api/me/notes/${note.id}/read`, { method: 'POST' }))}
-            onThrowAway={() => act(() => api(`/api/me/notes/${note.id}`, { method: 'DELETE' }))}
+            onThrowAway={() => act(() => ignoreGone(api(`/api/me/notes/${note.id}`, { method: 'DELETE' })))}
             onReply={sender && !sender.inMemoriam ? () => setReplyTo(sender) : undefined}
           />
         )

@@ -5,15 +5,15 @@ import LoadFailed from './components/LoadFailed.tsx'
 const OFFLINE = 'אין חיבור לאתר כרגע. בדקו את האינטרנט ונסו שוב.'
 
 /**
- * Runs a request and answers '' when it went through, else what to tell the visitor: the server's own words, or that
- * the site can't be reached (the browser's own network error is in English).
+ * Runs a request and answers '' when it went through, else what to tell the visitor: the server's own words, that the
+ * site can't be reached (fetch throws a TypeError, in English, when no answer came), or that something went wrong.
  */
 export async function attempt(run: () => Promise<unknown>): Promise<string> {
   try {
     await run()
     return ''
   } catch (err) {
-    return err instanceof ApiError ? err.message : OFFLINE
+    return err instanceof ApiError ? err.message : err instanceof TypeError ? OFFLINE : 'משהו השתבש'
   }
 }
 
@@ -103,11 +103,17 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
 
   // The first load, and the retry after it failed. Only this sets loadError; later reloads throw to whoever asked.
   const firstLoad = useCallback(async () => {
-    setLoading(true)
-    setLoadError('')
     setLoadError(await attempt(() => Promise.all([reload(), api<EventInfo>('/api/event').then(setEvent)])))
     setLoading(false)
   }, [reload])
+
+  // The failure stays on screen, with its button busy, until the retry has an answer.
+  const [retrying, setRetrying] = useState(false)
+  const retry = async () => {
+    setRetrying(true)
+    await firstLoad()
+    setRetrying(false)
+  }
 
   useEffect(() => {
     firstLoad()
@@ -142,5 +148,5 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
   }, [role, people, scenes, event, me, unreadNotes, loading, loadError, reload])
 
   // Without the roster and the event details nothing on the site works, so a failed first load replaces all of it.
-  return <StoreContext.Provider value={store}>{loadError ? <LoadFailed message={loadError} onRetry={firstLoad} /> : children}</StoreContext.Provider>
+  return <StoreContext.Provider value={store}>{loadError ? <LoadFailed message={loadError} busy={retrying} onRetry={retry} /> : children}</StoreContext.Provider>
 }

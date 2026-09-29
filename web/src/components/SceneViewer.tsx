@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import OpenSeadragon from 'openseadragon'
 import { faceUrl, type Scene, type Tag } from '../api.ts'
 import { LAYER, useEscape } from '../useEscape.ts'
-import { faceDirection, firstFace, neighborFace, SceneOpenFailed } from './SceneViewerParts.tsx'
+import { faceDirection, firstFace, focusVisible, neighborFace, SceneOpenFailed } from './SceneViewerParts.tsx'
 
 interface Props {
   scene: Scene
@@ -62,6 +62,8 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
   useEffect(() => {
     const osd = viewer.current
     if (!osd || !opened) return
+    // Rebuilding removes the focused face, so its new element gets the focus back afterwards.
+    const hadFocus = [...elements.current.values()].some((el) => el === document.activeElement)
     trackers.current.forEach((t) => t.destroy())
     trackers.current = []
     elements.current.clear()
@@ -86,10 +88,9 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
         if (previous) previous.tabIndex = -1
         tabStop.current = tag.id
         el.tabIndex = 0
-        if (!el.matches(':focus-visible')) return
-        // Tabbing to a face off screen scrolls the viewer's own boxes; put them back and move the picture instead.
+        // Focusing a face off screen scrolls the viewer's own boxes; put them back and move the picture instead.
         for (const box of [osd.container, osd.canvas]) box.scrollTop = box.scrollLeft = 0
-        showFace(tag)
+        if (focusVisible(el)) showFace(tag)
       })
       // Enter or Space does what a click does; the arrow keys go to the next face that way. Handled keys stop here,
       // so the viewer doesn't also pan. Escape and browser shortcuts (like Alt+Left for back) go on as usual.
@@ -132,6 +133,7 @@ export default function SceneViewer({ scene, labelFor, selectedTagId, myPersonId
       )
       elements.current.set(tag.id, el)
     }
+    if (hadFocus) elements.current.get(tabStop.current ?? -1)?.focus({ preventScroll: true })
     // labelFor is recreated each render; the tags array identity is what matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, scene.tags, myPersonId])

@@ -20,7 +20,10 @@ export function pushEscape(layer: number, run: () => void): () => void {
   if (stack.length === 0) window.addEventListener('keydown', onKey)
   stack.push(entry)
   return () => {
-    stack.splice(stack.indexOf(entry), 1)
+    // Already off: splice(-1) would take off somebody else's handler.
+    const i = stack.indexOf(entry)
+    if (i < 0) return
+    stack.splice(i, 1)
     if (stack.length === 0) window.removeEventListener('keydown', onKey)
   }
 }

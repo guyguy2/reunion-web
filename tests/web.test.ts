@@ -7,9 +7,9 @@ import ContactLinks from '../web/src/components/ContactLinks.tsx'
 import FriendFilters, { classMenuValue, classValue, pickClass } from '../web/src/components/FriendFilters.tsx'
 import LoadFailed from '../web/src/components/LoadFailed.tsx'
 import { daysLeft, rsvpShortcut } from '../web/src/components/Rsvp.tsx'
-import { NoteCard, noteAction } from '../web/src/components/Notes.tsx'
+import { ignoreGone, NoteCard, noteAction } from '../web/src/components/Notes.tsx'
 import { ClaimNudge } from '../web/src/components/PersonPanel.tsx'
-import { faceDirection, firstFace, neighborFace, SceneOpenFailed } from '../web/src/components/SceneViewerParts.tsx'
+import { faceDirection, firstFace, focusVisible, neighborFace, SceneOpenFailed } from '../web/src/components/SceneViewerParts.tsx'
 import { LAYER, pushEscape } from '../web/src/useEscape.ts'
 import { Credits } from '../web/src/routes/EventPage.tsx'
 import { shouldResetDraft } from '../web/src/routes/Me.tsx'
@@ -63,6 +63,7 @@ describe('contact links', () => {
     expect(render({ email: 'dana@example.com#top', instagram: null, linkedin: null })).not.toContain('mailto:')
     expect(render({ email: 'no-at-sign.example.com', instagram: null, linkedin: null })).not.toContain('mailto:')
     expect(render({ email: 'dana.zur@mail.example.com', instagram: null, linkedin: null })).toContain('href="mailto:dana.zur@mail.example.com"')
+    expect(render({ email: 'first.last+x@ex-ample.co.il', instagram: null, linkedin: null })).toContain('href="mailto:first.last+x@ex-ample.co.il"')
   })
 })
 
@@ -512,6 +513,14 @@ describe('notes inbox actions', () => {
   it('also says so when the inbox fails to reload afterwards', async () => {
     expect(await noteAction(async () => {}, async () => Promise.reject(new TypeError('Failed to fetch')))).toContain('אין חיבור')
   })
+
+  it('counts throwing away a note that is already gone as done, and reloads the inbox', async () => {
+    const reload = vi.fn(async () => {})
+    expect(await noteAction(() => ignoreGone(Promise.reject(new ApiError(404, 'Not found'))), reload)).toBe('')
+    expect(reload).toHaveBeenCalledOnce()
+    expect(await noteAction(() => ignoreGone(Promise.reject(new ApiError(500, 'משהו השתבש'))), reload)).toBe('משהו השתבש')
+    expect(reload).toHaveBeenCalledOnce()
+  })
 })
 
 describe('claiming a profile', () => {
@@ -585,6 +594,16 @@ describe('faces on the class photo, by keyboard', () => {
     expect(firstFace([])).toBeNull()
   })
 
+  it('moves the picture only for keyboard focus, and assumes keyboard where the browser cannot tell', () => {
+    const element = (matches: () => boolean) => ({ matches }) as unknown as Element
+    expect(focusVisible(element(() => true))).toBe(true)
+    expect(focusVisible(element(() => false))).toBe(false)
+    const oldSafari = element(() => {
+      throw new SyntaxError("':focus-visible' is not a valid selector")
+    })
+    expect(focusVisible(oldSafari)).toBe(true)
+  })
+
   it('says when the class photo did not load, with a way to try again', () => {
     const html = renderToStaticMarkup(createElement(SceneOpenFailed, { onRetry: () => {} }))
     expect(html).toContain('role="alert"')
@@ -637,6 +656,18 @@ describe('escape key', () => {
     expect(run).toHaveBeenCalledOnce()
   })
 
+  it('takes off only its own handler, even when its cleanup runs twice', () => {
+    const closed: string[] = []
+    const offDrawer = pushEscape(LAYER.drawer, () => closed.push('drawer'))
+    const offDialog = pushEscape(LAYER.dialog, () => closed.push('dialog'))
+    offDrawer()
+    offDrawer()
+    press()
+    offDialog()
+    expect(closed).toEqual(['dialog'])
+    expect(listeners).toHaveLength(0)
+  })
+
   it('listens only while something is open', () => {
     expect(listeners).toHaveLength(0)
     const offA = pushEscape(LAYER.drawer, () => {})
@@ -659,10 +690,23 @@ describe('loading the site', () => {
     expect(await attempt(async () => Promise.reject(new TypeError('Failed to fetch')))).toBe('אין חיבור לאתר כרגע. בדקו את האינטרנט ונסו שוב.')
   })
 
+  it('blames the connection only for a request that never got an answer', async () => {
+    expect(await attempt(async () => Promise.reject(new Error('Unexpected')))).toBe('משהו השתבש')
+    expect(await attempt(async () => Promise.reject('odd'))).toBe('משהו השתבש')
+  })
+
   it('shows a failed first load with a way to try again, not an empty yearbook', () => {
-    const html = renderToStaticMarkup(createElement(LoadFailed, { message: 'משהו השתבש', onRetry: () => {} }))
+    const html = renderToStaticMarkup(createElement(LoadFailed, { message: 'משהו השתבש', busy: false, onRetry: () => {} }))
     expect(html).toContain('role="alert"')
     expect(html).toContain('משהו השתבש')
     expect(html).toContain('נסו שוב')
+    expect(html).not.toContain('disabled')
+  })
+
+  it('keeps the message up with a busy button while it tries again', () => {
+    const html = renderToStaticMarkup(createElement(LoadFailed, { message: 'משהו השתבש', busy: true, onRetry: () => {} }))
+    expect(html).toContain('משהו השתבש')
+    expect(html).toContain('disabled=""')
+    expect(html).toContain('מנסים שוב...')
   })
 })
