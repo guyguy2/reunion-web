@@ -8,7 +8,7 @@ import { clientKey, createLoginLimiter, createThrottle } from '../server/auth.ts
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
 import { gmailRelayMailer, type Mailer } from '../server/email.ts'
-import { insertPerson } from '../server/people.ts'
+import { getPerson, insertPerson } from '../server/people.ts'
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-hardening-test-'))
 const config: Config = {
@@ -416,5 +416,44 @@ describe('profile photo upload errors', () => {
     const res = await upload('now', new File(['not really a png'], 'fake.png', { type: 'image/png' }))
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'הקובץ אינו תמונה תקינה' })
+  })
+})
+
+describe('remove my info', () => {
+  async function ownProfile(name: string, formerName: string): Promise<{ id: number; token: string }> {
+    const created = await app.request('/api/people', json('POST', { name }, { Cookie: member }))
+    const { token, person } = await created.json()
+    const patched = await app.request('/api/me', json('PATCH', { formerName, city: 'Haifa' }, { Cookie: member, 'x-edit-token': token }))
+    expect(await patched.json()).toMatchObject({ formerName, city: 'Haifa' })
+    return { id: person.id, token }
+  }
+  const remove = (token: string) => app.request('/api/me', { method: 'DELETE', headers: { Cookie: member, 'x-edit-token': token } })
+
+  it('clears the former name too, keeps the photos an organizer added, and frees the profile to be claimed', async () => {
+    const { id, token } = await ownProfile('Jenny Carter', 'Jenny Miller')
+    db.prepare("INSERT INTO person_photos (person_id, kind, path) VALUES (?, 'then', 'uploads/organizer-then.webp')").run(id)
+
+    expect((await remove(token)).status).toBe(200)
+    expect(getPerson(db, id)).toMatchObject({ name: 'Jenny Carter', former_name: null, city: null, claimed_at: null, edit_token_hash: null })
+    expect(getPerson(db, id)?.photos).toMatchObject([{ kind: 'then', path: 'uploads/organizer-then.webp' }])
+    expect((await app.request(`/api/people/${id}/claim`, json('POST', { pin: '2468' }, { Cookie: member }))).status).toBe(200)
+  })
+
+  it('changes nothing when a step fails part way', async () => {
+    const { id, token } = await ownProfile('Casey Morgan', 'Casey Brown')
+    db.prepare('INSERT INTO device_tokens (token_hash, person_id) VALUES (?, ?)').run('hardening-device-key', id)
+    const before = getPerson(db, id)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    db.exec(`CREATE TEMP TRIGGER device_tokens_fail BEFORE DELETE ON device_tokens BEGIN SELECT RAISE(ABORT, 'simulated failure'); END`)
+    try {
+      const res = await remove(token)
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: 'משהו השתבש' })
+    } finally {
+      db.exec('DROP TRIGGER device_tokens_fail')
+    }
+    expect(getPerson(db, id)).toEqual(before)
+    expect((await app.request('/api/me', { headers: { Cookie: member, 'x-edit-token': token } })).status).toBe(200)
   })
 })

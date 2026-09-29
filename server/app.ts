@@ -475,18 +475,27 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     return c.json(serializePerson(getPerson(db, me.id)!, 'full'))
   })
 
-  // "Remove my info": wipes everything except the name (notes included), and releases the claim.
+  // "Remove my info": wipes everything except the name and the "then" photos (the former name and notes included),
+  // and releases the claim. All in one transaction, so a failure part way changes nothing.
   app.delete('/api/me', (c) => {
     const me = owner(c)
     if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
-    deletePhotos(db, config.dataDir, me.id, 'now')
-    updatePerson(db, me.id, {
-      nickname: null, email: null, instagram: null, linkedin: null, facebook: null, website: null, phone: null, x: null, city: null, bio: null, quote: null,
-      attending: null, claimed_at: null, edit_token_hash: null, pin_hash: null,
-    })
-    db.prepare('DELETE FROM notes WHERE recipient_id = ?').run(me.id)
-    db.prepare('DELETE FROM device_tokens WHERE person_id = ?').run(me.id)
-    db.prepare('DELETE FROM recovery_tokens WHERE person_id = ?').run(me.id)
+    db.exec('BEGIN')
+    try {
+      updatePerson(db, me.id, {
+        former_name: null, nickname: null, email: null, instagram: null, linkedin: null, facebook: null, website: null, phone: null, x: null, city: null, bio: null, quote: null,
+        attending: null, claimed_at: null, edit_token_hash: null, pin_hash: null,
+      })
+      db.prepare('DELETE FROM notes WHERE recipient_id = ?').run(me.id)
+      db.prepare('DELETE FROM device_tokens WHERE person_id = ?').run(me.id)
+      db.prepare('DELETE FROM recovery_tokens WHERE person_id = ?').run(me.id)
+      // Last, because it deletes the files too, and a rollback cannot bring those back.
+      deletePhotos(db, config.dataDir, me.id, 'now')
+      db.exec('COMMIT')
+    } catch (err) {
+      if (db.isTransaction) db.exec('ROLLBACK')
+      throw err
+    }
     return c.json({ ok: true })
   })
 
