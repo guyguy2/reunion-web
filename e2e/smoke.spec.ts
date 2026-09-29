@@ -14,6 +14,16 @@ test('the gate lets a member in and the class photo shows its faces', async ({ p
   await expect(page.locator('.face-tag')).toHaveCount(48)
 })
 
+test('another user is a separate browser that still sees the gate', async ({ page, anotherUser }) => {
+  await login(page, 'member')
+  const other = await anotherUser()
+  await page.goto('/')
+  await other.goto('/')
+  await expect(page.getByLabel('סיסמה')).toHaveCount(0)
+  await expect(page.getByText('42/48 זוהו')).toBeVisible()
+  await expect(other.getByLabel('סיסמה')).toBeVisible()
+})
+
 test('an admin session shows the admin tab', async ({ page }) => {
   await login(page, 'admin')
   await page.goto('/')

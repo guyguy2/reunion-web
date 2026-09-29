@@ -63,7 +63,14 @@ export async function startServer(opts: { env?: Record<string, string> } = {}): 
   const spawnFailed = new Promise<never>((_, reject) => child.once('error', reject))
   spawnFailed.catch(() => {})
 
+  // Best effort if the worker is killed hard: don't leave the server running. Removed again in stop().
+  const killChild = () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+  }
+  process.on('exit', killChild)
+
   const stop = async () => {
+    process.off('exit', killChild)
     if (child.exitCode === null && child.signalCode === null) {
       child.kill('SIGTERM')
       // A server that ignores SIGTERM would hang the run, so escalate after a few seconds.
@@ -79,7 +86,7 @@ export async function startServer(opts: { env?: Record<string, string> } = {}): 
     for (;;) {
       if (child.exitCode !== null || child.signalCode !== null) throw new Error('The server exited before it was ready.')
       if (Date.now() > deadline) throw new Error('The server was not ready within 15 seconds.')
-      const ok = await Promise.race([fetch(`${url}/healthz`).then((res) => res.ok, () => false), spawnFailed])
+      const ok = await Promise.race([fetch(`${url}/healthz`, { signal: AbortSignal.timeout(1000) }).then((res) => res.ok, () => false), spawnFailed])
       if (ok) break
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
