@@ -2,11 +2,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import sharp from 'sharp'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../server/app.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
-import { addPhoto, getPerson, insertPerson } from '../server/people.ts'
+import { addPhoto, getPerson, insertPerson, MAX_PHOTOS_PER_KIND } from '../server/people.ts'
 import { exportRoster, importRoster, type RosterFile } from '../server/roster.ts'
 import { insertTag, titleYear } from '../server/scenes.ts'
 
@@ -245,6 +245,63 @@ describe('roster import', () => {
     db.prepare('DELETE FROM people WHERE id = ?').run(added)
   })
 
+  it('never takes a picture here by year when the file has that picture by name', () => {
+    const face = insertTag(db, scene96, { x: 100, y: 600, w: 50, h: 60 }, null)
+    const result = importRoster(db, {
+      version: 1,
+      people: [{ key: 'z', name: 'ז. זר', gender: null }],
+      scenes: [
+        // Not on this site. Listed first, so the rule cannot depend on the order of the file.
+        {
+          title: '1996 - trip',
+          year: 1996,
+          width: 1000,
+          height: 800,
+          faces: [{ x: 100, y: 600, w: 50, h: 60, caption: 'ז. זר', classLabel: null, staff: false, person: 'z' }],
+        },
+        // The graduation picture itself, whose one face is not the one above.
+        {
+          title: '1996 - graduation',
+          year: 1996,
+          width: 1000,
+          height: 800,
+          faces: [{ x: 900, y: 700, w: 50, h: 60, caption: null, classLabel: null, staff: false, person: null }],
+        },
+      ],
+    })
+    expect(result).toMatchObject({ facesMatched: 0, facesUnmatched: 2, peopleAdded: 0 })
+    expect(tagRow(face)).toMatchObject({ person_id: null, caption: null })
+    db.prepare('DELETE FROM tags WHERE id = ?').run(face)
+  })
+
+  it('still lets a second picture here with the same title be taken by year', () => {
+    const twin = Number(
+      db
+        .prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path, sort, year) VALUES ('s-twin', '1996 - graduation', 'group', 1000, 800, 'scenes/s-twin', 1, 1996)`)
+        .run().lastInsertRowid,
+    )
+    const face = insertTag(db, twin, { x: 100, y: 600, w: 50, h: 60 }, null)
+    const result = importRoster(db, {
+      version: 1,
+      people: [{ key: 'w', name: 'ו. ורד', gender: null }],
+      scenes: [
+        { title: '1996 - graduation', year: 1996, width: 1000, height: 800, faces: [] },
+        {
+          title: '1996 - trip',
+          year: 1996,
+          width: 1000,
+          height: 800,
+          faces: [{ x: 100, y: 600, w: 50, h: 60, caption: null, classLabel: null, staff: false, person: 'w' }],
+        },
+      ],
+    })
+    expect(result).toMatchObject({ facesMatched: 1, peopleAdded: 1 })
+    const added = tagRow(face).person_id as number
+    expect(getPerson(db, added)!.name).toBe('ו. ורד')
+    db.prepare('DELETE FROM scenes WHERE id = ?').run(twin)
+    db.prepare('DELETE FROM people WHERE id = ?').run(added)
+  })
+
   it('can be run again without adding anyone twice', () => {
     const before = (db.prepare('SELECT COUNT(*) AS n FROM people').get() as { n: number }).n
     expect(importRoster(db, roster)).toMatchObject({ peopleAdded: 0, namesKept: 3 })
@@ -303,6 +360,39 @@ describe('staff faces', () => {
     expect(onDisk(photo.path)).toBe(false)
   })
 
+  it('marking someone as staff that fails part way leaves their photo files in place', async () => {
+    const id = insertPerson(db, { name: 'Mr. Rolled Back' })
+    const photo = await addPhoto(db, dataDir, id, 'now', await picture())
+    // The profile's own delete, the last step, fails.
+    db.exec(`CREATE TRIGGER fail_staff BEFORE DELETE ON people WHEN OLD.id = ${id} BEGIN SELECT RAISE(ABORT, 'no'); END`)
+    try {
+      expect((await app.request(`/api/admin/people/${id}/staff`, { method: 'POST', headers: { Cookie: admin } })).status).toBe(400)
+    } finally {
+      db.exec('DROP TRIGGER fail_staff')
+    }
+    expect(getPerson(db, id)!.photos!.map((p) => p.path)).toEqual([photo.path])
+    expect(onDisk(photo.path)).toBe(true)
+  })
+
+  it('a photo file that cannot be deleted is logged, and marking as staff still goes through', async () => {
+    const id = insertPerson(db, { name: 'Ms. Locked File' })
+    await addPhoto(db, dataDir, id, 'now', await picture())
+    const rm = vi.spyOn(fs, 'rmSync').mockImplementation(() => {
+      throw new Error(`EACCES: permission denied, unlink '${dataDir}/uploads/locked.webp'`)
+    })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const res = await app.request(`/api/admin/people/${id}/staff`, { method: 'POST', headers: { Cookie: admin } })
+      expect(res.status).toBe(200)
+      expect(await res.text()).not.toContain(dataDir)
+      expect(logged).toHaveBeenCalled()
+    } finally {
+      rm.mockRestore()
+      logged.mockRestore()
+    }
+    expect(getPerson(db, id)).toBeUndefined()
+  })
+
   it('a claimed profile cannot be marked as staff', async () => {
     expect((await app.request(`/api/admin/people/${alreadyHere}/staff`, { method: 'POST', headers: { Cookie: admin } })).status).toBe(400)
   })
@@ -344,6 +434,22 @@ describe('fixing the roster', () => {
     expect(merged).toMatchObject({ then_photo: intoThen1.path, now_photo: fromNow.path })
     expect([intoThen1, intoThen2, fromThen1, fromNow].every((p) => onDisk(p.path))).toBe(true)
     expect(onDisk(fromThen2.path)).toBe(false)
+  })
+
+  it('a merge that fails part way leaves every photo file in place', async () => {
+    const into = insertPerson(db, { name: 'Roni Tal' })
+    const from = insertPerson(db, { name: 'ר. טל' })
+    for (let i = 0; i < MAX_PHOTOS_PER_KIND; i++) await addPhoto(db, dataDir, into, 'then', await picture())
+    // No room left on the kept profile, so this one is dropped by a merge that goes through.
+    const extra = await addPhoto(db, dataDir, from, 'then', await picture())
+    db.exec(`CREATE TRIGGER fail_merge BEFORE DELETE ON people WHEN OLD.id = ${from} BEGIN SELECT RAISE(ABORT, 'no'); END`)
+    try {
+      expect((await app.request(`/api/admin/people/${from}/merge`, json(admin, { intoId: into }))).status).toBe(400)
+    } finally {
+      db.exec('DROP TRIGGER fail_merge')
+    }
+    expect(getPerson(db, from)!.photos!.map((p) => p.path)).toEqual([extra.path])
+    expect(onDisk(extra.path)).toBe(true)
   })
 
   it('a merge fills in details the kept profile lacks, and keeps hidden ones hidden', async () => {

@@ -1,5 +1,6 @@
 import type { Db, PersonRow, SceneRow, TagRow } from './db.ts'
-import { deletePhoto, deletePhotos, getPerson, insertPerson, listPhotos, MAX_PHOTOS_PER_KIND, updatePerson } from './people.ts'
+import { removeUpload } from './images.ts'
+import { getPerson, insertPerson, listPhotos, MAX_PHOTOS_PER_KIND, updatePerson } from './people.ts'
 
 /**
  * The names, classes and genders worked out for the class photos, as one file. It is how a roster that was
@@ -93,7 +94,7 @@ export function importRoster(db: Db, file: RosterFile): ImportResult {
   // A face here is matched at most once, and a picture here that the file already has is not taken again by
   // year: two pictures from one year must not both write to the same faces.
   const usedTags = new Set<number>()
-  const matchedScenes = new Set(local.filter((s) => file.scenes.some((source) => source.title === s.title)).map((s) => s.id))
+  const matchedScenes = new Set(file.scenes.map((source) => local.find((s) => s.title === source.title)?.id).filter((id) => id != null))
 
   for (const source of file.scenes) {
     const scene =
@@ -181,12 +182,27 @@ const MERGED_FIELDS = [
 ] as const
 
 /**
+ * Deletes photo files once the rows that pointed at them are gone for good, so a change that rolls back never
+ * loses a file. A file that will not go is only logged: the change it belongs to is already saved.
+ */
+function removePhotoFiles(dataDir: string, paths: string[]) {
+  for (const rel of paths) {
+    try {
+      removeUpload(dataDir, rel)
+    } catch (err) {
+      console.error(`Photo file ${rel} was not deleted: ${(err as Error).message}`)
+    }
+  }
+}
+
+/**
  * Folds one unclaimed profile into another: the same person read two ways on two posters. The kept profile's
  * own photos stay first; the other one's fill any free places up to the limit, and the files of the rest are deleted.
  */
 export function mergePeople(db: Db, dataDir: string, from: PersonRow, into: PersonRow) {
   if (from.id === into.id) throw new Error('Cannot merge a profile into itself')
   if (from.claimed_at) throw new Error('A claimed profile cannot be merged away. Merge the other one into it.')
+  const dropped: string[] = []
   db.exec('BEGIN')
   try {
     db.prepare('UPDATE tags SET person_id = ? WHERE person_id = ?').run(into.id, from.id)
@@ -203,11 +219,12 @@ export function mergePeople(db: Db, dataDir: string, from: PersonRow, into: Pers
     for (const kind of ['then', 'now'] as const) {
       const room = MAX_PHOTOS_PER_KIND - listPhotos(db, into.id, kind).length
       for (const [i, photo] of listPhotos(db, from.id, kind).entries()) {
-        // A new row sorts after the kept profile's own photos. The old row goes with the merged profile.
+        // A new row sorts after the kept profile's own photos. Every old row goes with the merged profile,
+        // and the files of the photos that did not fit are deleted after the commit.
         if (i < room) {
           db.prepare('INSERT INTO person_photos (person_id, kind, path, created_at) SELECT ?, kind, path, created_at FROM person_photos WHERE id = ?')
             .run(into.id, photo.id)
-        } else deletePhoto(db, dataDir, from.id, photo.id)
+        } else dropped.push(photo.path)
       }
       // The mirror people.ts keeps for the portrait wall: the oldest photo of each kind.
       const column = kind === 'then' ? 'then_photo' : 'now_photo'
@@ -220,22 +237,26 @@ export function mergePeople(db: Db, dataDir: string, from: PersonRow, into: Pers
     db.exec('ROLLBACK')
     throw err
   }
+  removePhotoFiles(dataDir, dropped)
 }
 
 /** Marks someone as staff: their faces are hidden and keep the name as a caption, and the unclaimed profile goes. */
 export function markPersonStaff(db: Db, dataDir: string, person: PersonRow) {
   if (person.claimed_at) throw new Error('A claimed profile cannot be marked as staff')
+  let photos: string[] = []
   db.exec('BEGIN')
   try {
     db.prepare(
       `UPDATE tags SET is_staff = 1, caption = COALESCE(caption, ?), person_id = NULL
        WHERE person_id = ? AND scene_id IN (SELECT id FROM scenes WHERE kind = 'group')`,
     ).run(person.name, person.id)
-    deletePhotos(db, dataDir, person.id)
+    // The rows go with the profile; the files are deleted after the commit.
+    photos = listPhotos(db, person.id).map((p) => p.path)
     db.prepare('DELETE FROM people WHERE id = ?').run(person.id)
     db.exec('COMMIT')
   } catch (err) {
     db.exec('ROLLBACK')
     throw err
   }
+  removePhotoFiles(dataDir, photos)
 }
