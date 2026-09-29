@@ -127,6 +127,18 @@ describe('admin JSON bodies that are null or a list', () => {
     await expectHebrewError(await app.request(`/api/admin/scenes/${scene}/tags/batch`, json('POST', { boxes: 'nope' }, { Cookie: admin })))
     expect((tagRow(tag) as { person_id: number }).person_id).toBe(person)
   })
+
+  it('refuses a roster file with a nameless person or a broken face box, in Hebrew', async () => {
+    const before = count('people')
+    const nameless = { version: 1, people: [{ key: 'p1', name: '  ', gender: null }], scenes: [] }
+    const brokenBox = {
+      version: 1,
+      people: [],
+      scenes: [{ title: 'Bodies', year: null, width: 600, height: 400, faces: [{ x: null, y: 1, w: 10, h: 10, caption: null, classLabel: null, staff: false, person: null }] }],
+    }
+    for (const file of [nameless, brokenBox]) await expectHebrewError(await app.request('/api/admin/roster/import', json('POST', file, { Cookie: admin })))
+    expect(count('people')).toBe(before)
+  })
 })
 
 describe('loading the demo data', () => {
@@ -189,6 +201,10 @@ describe('merging and marking staff', () => {
   it('asks for the profile to merge into when none is given', async () => {
     const id = insertPerson(db, { name: 'Avery Lane' })
     await expectHebrewError(await app.request(`/api/admin/people/${id}/merge`, json('POST', {}, { Cookie: admin })))
+    // Number(true) and Number([5]) are integers, but neither is a profile id.
+    for (const intoId of [true, [id]]) {
+      await expectHebrewError(await app.request(`/api/admin/people/${id}/merge`, json('POST', { intoId }, { Cookie: admin })))
+    }
     expect(getPerson(db, id)).toBeDefined()
   })
 
@@ -261,7 +277,10 @@ describe('backup export', () => {
     expect(backup.person_photos).toContainEqual(expect.objectContaining({ person_id: owner, kind: 'then', path: 'uploads/sam-then.webp' }))
     expect(backup.quotes).toContainEqual(expect.objectContaining({ id: quote, text: 'Open your books to page 42', said_by: 'The teacher' }))
     expect(backup.quote_comments).toContainEqual(expect.objectContaining({ quote_id: quote, message: 'Every single day', added_by: 'Jenny' }))
-    expect(backup.quote_reactions).toContainEqual(expect.objectContaining({ quote_id: quote, reactor: 'backup-reactor', emoji: REACTIONS[0] }))
+    expect(backup.quote_reactions).toContainEqual(expect.objectContaining({ quote_id: quote, emoji: REACTIONS[0] }))
+    // Who reacted is a visitor's browser key or a member id, so it stays out of the file.
+    for (const row of backup.quote_reactions) expect(row).not.toHaveProperty('reactor')
+    expect(JSON.stringify(backup)).not.toContain('backup-reactor')
     expect(backup.tapes).toContainEqual(expect.objectContaining({ provider: 'youtube', external_id: 'bkpVideo001', title: 'Backup song' }))
     expect(backup.videos).toContainEqual(expect.objectContaining({ provider: 'youtube', external_id: 'bkpClip0001', title: 'Backup clip' }))
     expect(backup.credits).toEqual([{ name: 'Jenny Carter', note: 'Scanned the yearbook' }])
@@ -343,6 +362,44 @@ describe('duplicate tapes and videos', () => {
     }
     await expect(addVideo(db, { url: 'https://youtu.be/dupClip0002' }, lookup)).rejects.toThrow('הסרטון הזה כבר בספרייה')
     expect(db.prepare(`SELECT title FROM videos WHERE external_id = 'dupClip0002'`).all()).toEqual([{ title: 'Got there first' }])
+  })
+})
+
+describe('the other bad input messages', () => {
+  const messageOf = (fn: () => unknown) => {
+    try {
+      fn()
+    } catch (err) {
+      return (err as Error).message
+    }
+    return null
+  }
+  const expectHebrew = (message: string | null) => {
+    expect(message).toMatch(/[א-ת]/)
+    expect(message).not.toMatch(/Invalid|Unknown|Missing|must be/)
+  }
+
+  it('refuses an unknown photo kind on the admin upload in Hebrew', async () => {
+    const id = insertPerson(db, { name: 'Quinn Harper' })
+    const form = new FormData()
+    form.set('photo', new File([new Uint8Array(await picture())], 'photo.png', { type: 'image/png' }))
+    const res = await app.request(`/api/admin/people/${id}/photo/later`, { method: 'POST', headers: { Cookie: admin }, body: form })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'סוג תמונה לא מוכר' })
+  })
+
+  it('explains a bad profile body, RSVP, gender or non-text field in Hebrew', () => {
+    expectHebrew(messageOf(() => parsePersonInput(null, { admin: true })))
+    expectHebrew(messageOf(() => parsePersonInput({ attending: 'sometimes' }, { admin: true })))
+    expectHebrew(messageOf(() => parsePersonInput({ gender: 'x' }, { admin: true })))
+    expectHebrew(messageOf(() => parsePersonInput({ city: 42 }, { admin: true })))
+  })
+
+  it('explains a reaction without a reactor or with an unknown choice in Hebrew', () => {
+    const quote = Number(db.prepare(`INSERT INTO quotes (text) VALUES ('Eyes on your own paper')`).run().lastInsertRowid)
+    expectHebrew(messageOf(() => reactToQuote(db, quote, null, { emoji: REACTIONS[0] })))
+    expectHebrew(messageOf(() => reactToQuote(db, quote, 'reactor-d', { emoji: 'thumbs' })))
+    expect(listQuotes(db).find((q) => q.id === quote)).toMatchObject({ reactions: [] })
   })
 })
 

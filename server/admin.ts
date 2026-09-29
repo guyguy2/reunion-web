@@ -67,7 +67,9 @@ export function adminRoutes(config: Config, db: Db) {
     const from = getPerson(db, Number(c.req.param('id')))
     if (!from) return c.json({ error: 'Not found' }, 404)
     const body = await readJson(c)
-    if (body.intoId == null || !Number.isInteger(Number(body.intoId))) return c.json({ error: 'לא נבחר פרופיל למיזוג' }, 400)
+    if ((typeof body.intoId !== 'number' && typeof body.intoId !== 'string') || !Number.isInteger(Number(body.intoId))) {
+      return c.json({ error: 'לא נבחר פרופיל למיזוג' }, 400)
+    }
     const into = getPerson(db, Number(body.intoId))
     if (!into) return c.json({ error: 'Not found' }, 404)
     try {
@@ -94,7 +96,7 @@ export function adminRoutes(config: Config, db: Db) {
     const person = getPerson(db, Number(c.req.param('id')))
     const kind = c.req.param('kind')
     if (!person) return c.json({ error: 'Not found' }, 404)
-    if (kind !== 'then' && kind !== 'now') return c.json({ error: 'Unknown photo kind' }, 400)
+    if (kind !== 'then' && kind !== 'now') return c.json({ error: 'סוג תמונה לא מוכר' }, 400)
     try {
       await addPhoto(db, config.dataDir, person.id, kind, await readImageField(c, 'photo', MAX_UPLOAD_BYTES))
     } catch (err) {
@@ -316,7 +318,8 @@ export function adminRoutes(config: Config, db: Db) {
       person_photos: db.prepare('SELECT * FROM person_photos ORDER BY id').all(),
       quotes: db.prepare('SELECT * FROM quotes ORDER BY id').all(),
       quote_comments: db.prepare('SELECT * FROM quote_comments ORDER BY id').all(),
-      quote_reactions: db.prepare('SELECT * FROM quote_reactions ORDER BY quote_id, reactor').all(),
+      // Without who reacted: that is a visitor's browser key or a member id.
+      quote_reactions: db.prepare('SELECT quote_id, emoji, created_at FROM quote_reactions ORDER BY quote_id, rowid').all(),
       tapes: db.prepare('SELECT * FROM tapes ORDER BY id').all(),
       videos: db.prepare('SELECT * FROM videos ORDER BY id').all(),
       credits: listCredits(db),

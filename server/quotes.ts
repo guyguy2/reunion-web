@@ -63,9 +63,9 @@ export function listQuotes(db: Db, reactor: string | null = null) {
  */
 export function reactToQuote(db: Db, quoteId: number, reactor: string | null, body: unknown) {
   const emoji = fieldsOf(body)('emoji')
-  if (!reactor) throw new Error('Missing reactor')
+  if (!reactor) throw new Error('לא הצלחנו לזהות מי מגיב. רעננו את הדף ונסו שוב.')
   if (!db.prepare('SELECT 1 FROM quotes WHERE id = ?').get(quoteId)) throw new Error('הציטוט הזה כבר לא קיים')
-  if (emoji && !REACTIONS.includes(emoji)) throw new Error('Unknown reaction')
+  if (emoji && !REACTIONS.includes(emoji)) throw new Error('תגובת האימוג׳י הזו לא מוכרת')
   if (emoji) {
     db.prepare(
       `INSERT INTO quote_reactions (quote_id, reactor, emoji) VALUES (?, ?, ?)

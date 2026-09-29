@@ -120,7 +120,7 @@ function parseFlag(raw: unknown, rawKey: string): number {
 
 /** Validates a JSON body into column -> value pairs. Throws Error with a user-facing message on bad input. */
 export function parsePersonInput(body: unknown, opts: { admin: boolean }): Record<string, string | number | null> {
-  if (!body || typeof body !== 'object') throw new Error('Invalid body')
+  if (!body || typeof body !== 'object') throw new Error('בקשה לא תקינה')
   const out: Record<string, string | number | null> = {}
   for (const [rawKey, raw] of Object.entries(body as Record<string, unknown>)) {
     const key = CAMEL[rawKey] ?? rawKey
@@ -129,14 +129,14 @@ export function parsePersonInput(body: unknown, opts: { admin: boolean }): Recor
       continue
     }
     if (!(EDITABLE_FIELDS as readonly string[]).includes(key)) continue
-    if (raw !== null && typeof raw !== 'string') throw new Error(`${rawKey} must be text`)
+    if (raw !== null && typeof raw !== 'string') throw new Error(`הערך חייב להיות טקסט (${rawKey})`)
     let value = raw?.trim() || null
     if (value && value.length > (MAX_LENGTH[key] ?? 200)) throw new Error(`הטקסט ארוך מדי (${rawKey})`)
     if (key === 'name' && !value) throw new Error('חובה למלא שם')
     if (key === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('כתובת האימייל לא תקינה')
     if (key === 'phone' && value && !/^\+?[\d\s().-]{7,25}$/.test(value)) throw new Error('מספר הטלפון לא תקין')
-    if (key === 'attending' && value && !['yes', 'no', 'maybe'].includes(value)) throw new Error('Invalid attending value')
-    if (key === 'gender' && value && !['m', 'f'].includes(value)) throw new Error('Invalid gender value')
+    if (key === 'attending' && value && !['yes', 'no', 'maybe'].includes(value)) throw new Error('התשובה אם מגיעים לא תקינה')
+    if (key === 'gender' && value && !['m', 'f'].includes(value)) throw new Error('ערך בן/בת לא תקין')
     if (key === 'instagram' && value) value = cleanInstagram(value)
     if (key === 'linkedin' && value && !/^https?:\/\//i.test(value)) value = `https://${value}`
     if (key === 'facebook' && value) value = cleanFacebook(value)
