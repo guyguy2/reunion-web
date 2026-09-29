@@ -347,12 +347,29 @@ describe('fixing the roster', () => {
   })
 
   it('a merge fills in details the kept profile lacks, and keeps hidden ones hidden', async () => {
-    const into = insertPerson(db, { name: 'Gal Mor', former_name: 'Gal Shani' })
-    const from = insertPerson(db, { name: 'ג. מור', former_name: 'Gal Other', nickname: 'Gali', email: 'gal@example.com', show_email: 0, phone: '050-1234567' })
+    // Hidden on either profile stays hidden: the email was hidden on the merged one, the website on the kept one.
+    const into = insertPerson(db, { name: 'Gal Mor', former_name: 'Gal Shani', show_website: 0 })
+    const from = insertPerson(db, {
+      name: 'ג. מור',
+      former_name: 'Gal Other',
+      nickname: 'Gali',
+      email: 'gal@example.com',
+      show_email: 0,
+      phone: '050-1234567',
+      website: 'https://gal.example.com',
+    })
     expect((await app.request(`/api/admin/people/${from}/merge`, json(admin, { intoId: into }))).status).toBe(200)
-    expect(getPerson(db, into)).toMatchObject({ former_name: 'Gal Shani', nickname: 'Gali', email: 'gal@example.com', show_email: 0, phone: '050-1234567' })
+    expect(getPerson(db, into)).toMatchObject({
+      former_name: 'Gal Shani',
+      nickname: 'Gali',
+      email: 'gal@example.com',
+      show_email: 0,
+      phone: '050-1234567',
+      website: 'https://gal.example.com',
+      show_website: 0,
+    })
     const everyone = (await (await app.request('/api/people', { headers: { Cookie: member } })).json()) as { id: number; email: string | null; phone: string | null }[]
-    expect(everyone.find((p) => p.id === into)).toMatchObject({ email: null, phone: '050-1234567' })
+    expect(everyone.find((p) => p.id === into)).toMatchObject({ email: null, phone: '050-1234567', website: null })
   })
 
   it('never merges a claimed profile away', async () => {

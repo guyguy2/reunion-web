@@ -196,7 +196,8 @@ export function mergePeople(db: Db, dataDir: string, from: PersonRow, into: Pers
     for (const [field, flag] of MERGED_FIELDS) {
       if (into[field] || !from[field]) continue
       fields[field] = from[field]
-      if (flag) fields[flag] = from[flag]
+      // Hidden on either profile stays hidden.
+      if (flag) fields[flag] = into[flag] && from[flag] ? 1 : 0
     }
     updatePerson(db, into.id, fields)
     for (const kind of ['then', 'now'] as const) {
