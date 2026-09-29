@@ -17,6 +17,7 @@ import Me from './routes/Me.tsx'
 import { SignInFromLink } from './components/CodeLogin.tsx'
 
 const Admin = lazy(() => import('./routes/Admin.tsx'))
+const Branding = lazy(() => import('./routes/Branding.tsx'))
 
 // Each tab is a VHS tape spine: a white label with a colored stripe, filled with its color on the current page.
 // The event and the profile are not tabs: the RSVP shortcut and the profile button live beside them.
@@ -41,7 +42,7 @@ function Shell() {
     <div className="flex h-full flex-col">
       <header className="z-20 flex flex-wrap items-center gap-x-3 gap-y-2 border-b-[3px] border-ink bg-white px-4 py-2 sm:gap-x-6">
         <NavLink to="/" className="flex items-center gap-2 font-display text-lg leading-none tracking-wide sm:text-2xl" style={{ textShadow: '2px 2px 0 var(--color-sun)' }}>
-          <img src="/hadassim-emblem.png" alt="" width={70} height={64} className="h-8 w-auto sm:h-10" />
+          <img src="/branding/emblem.png" alt="" width={70} height={64} className="h-8 w-auto sm:h-10" />
           {event?.title ?? 'פגישת מחזור'}
         </NavLink>
         <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t-[3px] border-ink bg-white sm:static sm:gap-2 sm:border-0 sm:bg-transparent">
@@ -123,6 +124,7 @@ function Shell() {
               <Route path="/me/:token" element={<Me />} />
               <Route path="/signin/:token" element={<SignInFromLink />} />
               <Route path="/admin" element={role === 'admin' ? <Admin /> : <Yearbook />} />
+              <Route path="/admin/branding" element={role === 'admin' ? <Branding /> : <Yearbook />} />
               <Route path="*" element={<Yearbook />} />
             </Routes>
           </Suspense>

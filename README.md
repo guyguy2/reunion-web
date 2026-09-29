@@ -97,6 +97,8 @@ Real class photos are uploaded through the admin page and stored in `DATA_DIR`. 
 
 Event details, schedule, the house mixtape, the organizers' video list and the line that signs the note emails (`emailSignature`) come from `EVENT_JSON`. They stay out of git so the repo doesn't publish the date, venue or schedule; `content/event.json` holds placeholder values that show the expected shape. In a local `.env`, wrap the JSON in single quotes and it can span several lines.
 
+The school's pictures stay out of git too: the emblem in the header, the postcard behind the passcode screen, and the two icons. They have fixed names, `emblem.png`, `postcard.webp`, `favicon.png` and `apple-touch-icon.png`, served at `/branding/<name>`: the file in `DATA_DIR/branding/` when there is one, else a neutral placeholder from `web/public/branding/`. Organizers upload or remove them on the admin page at `/admin/branding` (images up to 5 MB, converted to the format of the name). Locally, copying files with those names into `data/branding/` does the same, as seen with `pnpm build && pnpm start`; `pnpm dev` always shows the placeholders. Browsers may keep the previous picture for up to an hour.
+
 ## Deployment (Railway)
 
 Built from the `Dockerfile`. One service with a volume mounted at `/data`, the variables above, and a health check on `/healthz`.

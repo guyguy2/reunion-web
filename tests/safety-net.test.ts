@@ -67,7 +67,7 @@ afterAll(() => fs.rmSync(dataDir, { recursive: true, force: true }))
 describe('admin routes are for organizers only', () => {
   type Body = { json: unknown } | { text: string } | { file: string }
 
-  // One row per route registration in server/admin.ts: 33 in all (the admin.get/post/put/patch/delete calls there).
+  // One row per route registration in server/admin.ts: 35 in all (the admin.get/post/put/patch/delete calls there).
   // Paths are written exactly as registered, so the test below can compare them with the router's own list.
   const ROUTES: [method: string, route: string, body?: Body][] = [
     ['POST', '/people', { json: { name: 'Jenny Carter' } }],
@@ -103,6 +103,8 @@ describe('admin routes are for organizers only', () => {
     ['GET', '/feedback'],
     ['DELETE', '/feedback/:id'],
     ['POST', '/demo'],
+    ['POST', '/branding/:name', { file: 'file' }],
+    ['DELETE', '/branding/:name'],
   ]
 
   let member: string

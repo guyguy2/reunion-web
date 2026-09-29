@@ -25,6 +25,7 @@ import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, cropFace, readImageField, removeUplo
 import { addPhoto, deletePhoto, getPerson, insertPerson, listPeople, listPhotos, parsePersonInput, serializePerson, syncPrimary, updatePerson } from './people.ts'
 import { getScene, listScenes, serializeTag } from './scenes.ts'
 import { adminRoutes } from './admin.ts'
+import { brandingRoutes, MAX_BRANDING_BYTES } from './branding.ts'
 import { albumPhotos, albumVideos } from './album.ts'
 import { addTape, listTapes } from './tapes.ts'
 import { addVideo, albumVideoEntries, listVideos } from './videos.ts'
@@ -83,6 +84,7 @@ const largeBodies: [RegExp, MiddlewareHandler][] = [
   [/^\/api\/me\/photo\/[^/]+$/, limitBody(MAX_UPLOAD_BYTES + MB)],
   [/^\/api\/admin\/people\/[^/]+\/photo\/[^/]+$/, limitBody(MAX_UPLOAD_BYTES + MB)],
   [/^\/api\/admin\/scenes$/, limitBody(MAX_SCENE_BYTES + MB)],
+  [/^\/api\/admin\/branding\/[^/]+$/, limitBody(MAX_BRANDING_BYTES + MB)],
   [/^\/api\/admin\/import-csv$/, limitBody(2 * MB)],
   [/^\/api\/admin\/scenes\/[^/]+\/tags\/batch$/, limitBody(2 * MB)],
   [/^\/api\/admin\/roster\/import$/, limitBody(2 * MB)],
@@ -122,6 +124,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   })
 
   app.get('/healthz', (c) => c.json({ ok: true }))
+  app.route('/branding', brandingRoutes(config))
 
   // Small bodies only, before anything reads them. The larger upload limits apply once the session is checked.
   app.use('/api/*', (c, next) => (largeBodyLimit(c) ? next() : smallBody(c, next)))

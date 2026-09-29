@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { Config } from './config.ts'
+import { removeBranding, uploadBranding } from './branding.ts'
 import { getCounter, type Db, type TagRow } from './db.ts'
 import { requireAdmin, type AppEnv } from './auth.ts'
 import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, readImageField } from './images.ts'
@@ -383,6 +384,9 @@ export function adminRoutes(config: Config, db: Db, hooks?: { clearPinLockout(pe
     }
     return c.json({ ok: true })
   })
+
+  admin.post('/branding/:name', (c) => uploadBranding(c, config))
+  admin.delete('/branding/:name', (c) => removeBranding(c, config))
 
   return admin
 }
