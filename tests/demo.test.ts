@@ -3,7 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { openDb, type Db } from '../server/db.ts'
-import { loadDemoData } from '../server/demo.ts'
+import { SiteNotEmptyError, loadDemoData } from '../server/demo.ts'
+import { insertPerson } from '../server/people.ts'
 
 const dirs: string[] = []
 function freshSite() {
@@ -25,6 +26,14 @@ describe('loadDemoData', () => {
     await expect(loadDemoData(db, dataDir)).rejects.toThrow('רק לאתר ריק')
     expect(count(db, 'people')).toBe(0)
     expect(count(db, 'scenes')).toBe(1)
+  })
+
+  it('refuses a site that already has a person, writing nothing', async () => {
+    const { dataDir, db } = freshSite()
+    insertPerson(db, { name: 'Jenny Carter' })
+    await expect(loadDemoData(db, dataDir)).rejects.toThrow(SiteNotEmptyError)
+    expect(count(db, 'people')).toBe(1)
+    expect(count(db, 'scenes')).toBe(0)
   })
 
   it('fills an empty site', async () => {

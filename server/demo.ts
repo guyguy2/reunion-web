@@ -88,10 +88,13 @@ async function groupPhoto(): Promise<{ image: Buffer; boxes: Box[] }> {
   return { image, boxes }
 }
 
+/** Thrown by loadDemoData when the site already has people or class photos. */
+export class SiteNotEmptyError extends Error {}
+
 /** Fills an empty site with fake classmates, a portrait wall and a tagged group photo. */
 export async function loadDemoData(db: Db, dataDir: string) {
   const { people, scenes } = db.prepare('SELECT (SELECT COUNT(*) FROM people) AS people, (SELECT COUNT(*) FROM scenes) AS scenes').get() as { people: number; scenes: number }
-  if (people > 0 || scenes > 0) throw new Error('אפשר לטעון נתוני הדגמה רק לאתר ריק, בלי אנשים ובלי תמונות מחזור')
+  if (people > 0 || scenes > 0) throw new SiteNotEmptyError('אפשר לטעון נתוני הדגמה רק לאתר ריק, בלי אנשים ובלי תמונות מחזור')
   const r = rng(1996)
   const pick = <T,>(list: T[]) => list[Math.floor(r() * list.length)]
   const ids: number[] = []
