@@ -12,6 +12,8 @@
 // 5. The "Web app" URL (ending in /exec) is GMAIL_RELAY_URL.
 // After editing the code, Deploy > Manage deployments > edit > New version, or the old code keeps running.
 // Script properties are read on every request, so changing them needs no new version.
+// Upgrading a deployment that still has the secret in its code: add the SECRET script property first, then
+// deploy the new version, otherwise every email fails with "SECRET script property is not set".
 
 const DEFAULT_SENDER_NAME = 'אתר המחזור'
 

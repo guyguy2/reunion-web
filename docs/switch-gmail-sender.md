@@ -12,6 +12,7 @@ Before starting, check the facts below still hold (`server/email.ts`, `server/co
 - `configuredMailer` in `server/email.ts` uses Resend when `RESEND_API_KEY` is set, else the Gmail relay (`GMAIL_RELAY_URL` + `GMAIL_RELAY_SECRET`). `RESEND_API_KEY` must stay unset.
 - Every email goes through the relay: note alerts, sign-in links and feedback. All of them will come from the new address.
 - `EMAIL_FROM` is Resend only. The relay's display name is the `SENDER_NAME` script property, or the script's default when it is not set.
+- Older copies of the script had the secret in their code. To upgrade one of those deployments, add the `SECRET` script property first, then deploy the new version, otherwise every email fails with "SECRET script property is not set".
 - Note alerts set no reply-to, so replies land in the new Gmail inbox.
 - There is no local `.env` (only `.env.example`); the live values are Railway variables.
 - Consumer Gmail via MailApp: about 100 recipients a day. A new account's first automated mail may go to spam.
