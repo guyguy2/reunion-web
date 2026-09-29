@@ -10,6 +10,7 @@ const COOKIE = 'reunion_session'
 const SESSION_DAYS = 90
 const MAX_FAILURES = 10
 const FAILURE_WINDOW_MS = 15 * 60 * 1000
+const MAX_LOCKOUT_MS = 24 * 60 * 60 * 1000
 
 export function sha256(value: string): string {
   return crypto.createHash('sha256').update(value).digest('hex')
@@ -48,9 +49,12 @@ export function roleForPasscode(config: Config, passcode: string): Role | null {
   return null
 }
 
+/** Goes into the session cookie, so changing a role's passcode ends that role's sessions. */
+const passcodeHash = (config: Config, role: Role) => sha256(role === 'admin' ? config.adminPasscode : config.classPasscode)
+
 export async function startSession(c: Context, config: Config, role: Role) {
   const expires = Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000
-  await setSignedCookie(c, COOKIE, `${role}:${expires}`, config.sessionSecret, {
+  await setSignedCookie(c, COOKIE, `${role}:${expires}:${passcodeHash(config, role)}`, config.sessionSecret, {
     httpOnly: true,
     sameSite: 'Lax',
     secure: config.secureCookies,
@@ -66,9 +70,10 @@ export function endSession(c: Context) {
 export async function readRole(c: Context, config: Config): Promise<Role | null> {
   const value = await getSignedCookie(c, config.sessionSecret, COOKIE)
   if (!value) return null
-  const [role, expires] = value.split(':')
+  const [role, expires, hash] = value.split(':')
   if (role !== 'member' && role !== 'admin') return null
   if (!(Number(expires) > Date.now())) return null
+  if (hash !== passcodeHash(config, role)) return null
   return role
 }
 
@@ -86,22 +91,88 @@ export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next()
 }
 
+/** The times in `map` under `key` that are after `cutoff`. A key left with none is deleted rather than kept empty. */
+function recentTimes(map: Map<string, number[]>, key: string, cutoff: number): number[] {
+  const list = (map.get(key) ?? []).filter((t) => t > cutoff)
+  if (list.length) map.set(key, list)
+  else map.delete(key)
+  return list
+}
+
 // In-memory failed-login limiter. Fine for a single instance.
 export function createLoginLimiter() {
   const failures = new Map<string, number[]>()
-  const recent = (key: string) => {
-    const cutoff = Date.now() - FAILURE_WINDOW_MS
-    const list = (failures.get(key) ?? []).filter((t) => t > cutoff)
-    failures.set(key, list)
-    return list
-  }
+  const recent = (key: string) => recentTimes(failures, key, Date.now() - FAILURE_WINDOW_MS)
   return {
     blocked: (key: string) => recent(key).length >= MAX_FAILURES,
-    fail: (key: string) => void recent(key).push(Date.now()),
+    fail: (key: string) => void failures.set(key, [...recent(key), Date.now()]),
     clear: (key: string) => void failures.delete(key),
+    /** How many keys it is holding. */
+    size: () => failures.size,
   }
 }
 
+/** Sliding-window throttle: at most `max` hits per key per `windowMs`, and at most `globalMax` hits in total per window when given. */
+export function createThrottle(opts: { max: number; windowMs: number; globalMax?: number }) {
+  const hits = new Map<string, number[]>()
+  let everyone: number[] = []
+  return {
+    /** Records the hit when allowed. */
+    allow(key: string): boolean {
+      const now = Date.now()
+      const cutoff = now - opts.windowMs
+      const mine = recentTimes(hits, key, cutoff)
+      everyone = everyone.filter((t) => t > cutoff)
+      if (mine.length >= opts.max || everyone.length >= (opts.globalMax ?? Infinity)) return false
+      hits.set(key, [...mine, now])
+      if (opts.globalMax !== undefined) everyone.push(now)
+      return true
+    },
+    clear: (key: string) => void hits.delete(key),
+    /** How many keys it is holding. */
+    size: () => hits.size,
+  }
+}
+
+/**
+ * Failed guesses against one key, with a block that grows: after MAX_FAILURES in the window the key is blocked for
+ * FAILURE_WINDOW_MS, and each wrong guess after a block doubles the next one, up to a day. The right guess clears it,
+ * and a day after its last block ran out the key starts over. In memory, like the limiter.
+ */
+export function createLockout() {
+  const entries = new Map<string, { failures: number[]; blocks: number; until: number }>()
+  const current = (key: string) => {
+    const entry = entries.get(key)
+    if (!entry) return undefined
+    const now = Date.now()
+    entry.failures = entry.failures.filter((t) => t > now - FAILURE_WINDOW_MS)
+    if (entry.failures.length === 0 && entry.until + MAX_LOCKOUT_MS <= now) {
+      entries.delete(key)
+      return undefined
+    }
+    return entry
+  }
+  return {
+    blocked: (key: string) => (current(key)?.until ?? 0) > Date.now(),
+    fail(key: string) {
+      const now = Date.now()
+      const entry = current(key) ?? { failures: [], blocks: 0, until: 0 }
+      entries.set(key, entry)
+      if (entry.blocks === 0) {
+        entry.failures.push(now)
+        if (entry.failures.length < MAX_FAILURES) return
+      }
+      entry.until = now + Math.min(FAILURE_WINDOW_MS * 2 ** entry.blocks, MAX_LOCKOUT_MS)
+      entry.blocks++
+    },
+    clear: (key: string) => void entries.delete(key),
+  }
+}
+
+/**
+ * The client's address. Railway's proxy appends the address it saw to x-forwarded-for, so the last hop is the real
+ * one; the client can put anything in the earlier hops and in x-real-ip. Tests and local runs send only x-real-ip.
+ */
 export function clientKey(c: Context): string {
-  return c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local'
+  return c.req.header('x-forwarded-for')?.split(',').at(-1)?.trim() || c.req.header('x-real-ip') || 'local'
 }

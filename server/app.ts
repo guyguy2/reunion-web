@@ -7,7 +7,9 @@ import type { Config } from './config.ts'
 import { bumpCounter, getCounter, openDb, type Db, type PersonRow, type TagRow } from './db.ts'
 import {
   clientKey,
+  createLockout,
   createLoginLimiter,
+  createThrottle,
   endSession,
   newEditToken,
   readRole,
@@ -66,6 +68,8 @@ async function readJson(c: Context): Promise<Record<string, unknown>> {
 }
 
 const MB = 1024 * 1024
+const MINUTE = 60 * 1000
+const DAY = 24 * 60 * MINUTE
 const limitBody = (maxSize: number) => bodyLimit({ maxSize, onError: (c) => c.json({ error: 'הקובץ או הבקשה גדולים מדי' }, 413) })
 const smallBody = limitBody(64 * 1024)
 // Uploads and organizer imports get room for their file. Every other API request is a small JSON body.
@@ -91,6 +95,12 @@ function loadEvent() {
 export function createApp(config: Config, db: Db = openDb(config.dataDir), mailer: Mailer | null = configuredMailer(config)) {
   const app = new Hono<AppEnv>()
   const limiter = createLoginLimiter()
+  const pinLockout = createLockout()
+  // Feedback and sign-in links send email, so each is limited per address and for everyone together.
+  const feedbackPerClient = createThrottle({ max: 3, windowMs: 10 * MINUTE })
+  const feedbackPerDay = createThrottle({ max: 50, windowMs: DAY })
+  const linksPerClient = createThrottle({ max: 3, windowMs: 10 * MINUTE })
+  const linksPerPerson = createThrottle({ max: 5, windowMs: DAY, globalMax: 100 })
 
   app.use('*', async (c, next) => {
     await next()
@@ -241,6 +251,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   // Feedback to the organizers: saved, then emailed when email is configured.
   const sendFeedback = feedbackSender(config)
   app.post('/api/feedback', async (c) => {
+    if (!feedbackPerClient.allow(clientKey(c)) || !feedbackPerDay.allow('all')) return c.json({ error: 'יותר מדי בקשות. נסו שוב מאוחר יותר.' }, 429)
     try {
       return c.json(await addFeedback(db, await c.req.json().catch(() => null), sendFeedback), 201)
     } catch (err) {
@@ -304,15 +315,19 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   // so signing in here never logs out the others. Wrong guesses are limited per device and per profile.
   app.post('/api/people/:id/login', async (c) => {
     const person = getPerson(db, Number(c.req.param('id')))
-    const keys = [`pin:${clientKey(c)}`, `pin:${person?.id}`]
-    if (keys.some((k) => limiter.blocked(k))) return c.json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.' }, 429)
+    // Once a profile is blocked, each further wrong guess blocks it for twice as long (createLockout).
+    const deviceKey = `pin:${clientKey(c)}`
+    const profileKey = `pin:${person?.id}`
+    if (limiter.blocked(deviceKey) || pinLockout.blocked(profileKey)) return c.json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.' }, 429)
     const body = await readJson(c)
     if (!person?.pin_hash) return c.json({ error: 'לפרופיל הזה עדיין אין קוד. פתחו את קישור העריכה או בקשו מהמארגנים לאפס אותו.' }, 400)
     if (typeof body.pin !== 'string' || !verifyPin(body.pin, person.pin_hash)) {
-      keys.forEach((k) => limiter.fail(k))
+      limiter.fail(deviceKey)
+      pinLockout.fail(profileKey)
       return c.json({ error: 'הקוד לא נכון' }, 401)
     }
-    keys.forEach((k) => limiter.clear(k))
+    limiter.clear(deviceKey)
+    pinLockout.clear(profileKey)
     const token = newEditToken()
     db.prepare('INSERT INTO device_tokens (token_hash, person_id) VALUES (?, ?)').run(sha256(token), person.id)
     return c.json({ token })
@@ -320,7 +335,10 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
 
   // Forgot the code (or never set one): a one-time sign-in link to the email on the profile.
   app.post('/api/people/:id/signin-link', async (c) => {
-    const person = getPerson(db, Number(c.req.param('id')))
+    const id = Number(c.req.param('id'))
+    // Counted before the profile is looked at, so a refusal says nothing about it, not even whether it has an email.
+    if (!linksPerClient.allow(clientKey(c)) || !linksPerPerson.allow(String(id))) return c.json({ error: 'יותר מדי בקשות. נסו שוב מאוחר יותר.' }, 429)
+    const person = getPerson(db, id)
     if (!person?.claimed_at) return c.json({ error: 'Not found' }, 404)
     try {
       const sentTo = await sendSignInLink(db, person, mailer, config.publicUrl ?? new URL(c.req.url).origin)
@@ -334,6 +352,8 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     const body = await readJson(c)
     const result = typeof body.token === 'string' ? redeemSignInLink(db, body.token) : null
     if (!result) return c.json({ error: 'הקישור כבר לא בתוקף. בקשו קישור חדש.' }, 400)
+    // Whoever used a link can read that inbox, so their address gets its link requests back, as a right passcode does.
+    linksPerClient.clear(clientKey(c))
     return c.json({ token: result.deviceToken })
   })
 
