@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import sharp from 'sharp'
 import { expect, login, test } from './fixtures.ts'
+import { startServer } from './server.ts'
 
 type Page = Parameters<typeof login>[0]
 
@@ -75,6 +76,9 @@ async function addTag(page: Page, sceneId: number, personId: number | null, x: n
   return res.json()
 }
 
+/** The rows of the people list, the only list on the people tab. */
+const peopleRows = (page: Page) => page.getByRole('list').getByRole('listitem')
+
 const memberOf = async (anotherUser: () => Promise<Page>) => {
   const member = await anotherUser()
   await login(member, 'member')
@@ -145,10 +149,8 @@ test.describe('access and overview', () => {
 
 test.describe('people', () => {
   test('the search finds people by name, nickname or former name', async ({ page }) => {
-    const people = await (async () => {
-      await login(page, 'admin')
-      return getPeople(page)
-    })()
+    await login(page, 'admin')
+    const people = await getPeople(page)
     const withNickname = people.find((p) => p.nickname)!
     const withFormer = people.find((p) => p.formerName)!
     await openAdmin(page, 'אנשים')
@@ -159,14 +161,14 @@ test.describe('people', () => {
       await search.fill(query)
       const expected = people.filter((p) => query.toLowerCase().split(/\s+/).every((w) => haystack(p).includes(w)))
       expect(expected.length).toBeGreaterThan(0)
-      await expect(page.getByRole('listitem')).toHaveCount(expected.length)
+      await expect(peopleRows(page)).toHaveCount(expected.length)
       for (const p of expected.slice(0, 3)) await expect(rowOf(page, p.name).first()).toBeVisible()
     }
 
     await search.fill('zzzz-nobody')
-    await expect(page.getByRole('listitem')).toHaveCount(0)
+    await expect(peopleRows(page)).toHaveCount(0)
     await search.clear()
-    await expect(page.getByRole('listitem')).toHaveCount(people.length)
+    await expect(peopleRows(page)).toHaveCount(people.length)
   })
 
   test('an organizer adds a person, renames them, and deletes them', async ({ page, anotherUser }) => {
@@ -202,7 +204,7 @@ test.describe('people', () => {
     await page.getByRole('navigation', { name: 'אזורי הניהול' }).getByRole('button', { name: 'אנשים', exact: true }).click()
     await page.getByPlaceholder('שם, כינוי או שם קודם').fill(`Nick${sfx}`)
     await expect(rowOf(page, renamed)).toBeVisible()
-    await expect(page.getByRole('listitem')).toHaveCount(1)
+    await expect(peopleRows(page)).toHaveCount(1)
 
     await rowOf(page, renamed).getByRole('button', { name: 'מחיקה' }).click()
     await rowOf(page, renamed).getByRole('button', { name: 'ביטול' }).click()
@@ -474,7 +476,8 @@ test.describe.serial('a group photo from upload to delete', () => {
   // OpenSeadragon draws on a canvas with no accessible name, so the drag is aimed at its class.
   const canvasCenter = async (page: Page) => {
     const box = (await page.locator('.openseadragon-canvas').boundingBox())!
-    return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    // The point above and left of the middle stays on the picture at any window size, and off the drawn box.
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2, awayX: box.x + box.width * 0.25, awayY: box.y + box.height * 0.25 }
   }
 
   test('an uploaded group photo is listed and members can view it', async ({ page, anotherUser }) => {
@@ -516,7 +519,8 @@ test.describe.serial('a group photo from upload to delete', () => {
     await page.mouse.move(x + 60, y + 40, { steps: 5 })
     await page.mouse.click(x + 60, y + 40)
     await counter(page, 1, 0)
-    // A new box is not selected: switch to selecting and click it to give it a name.
+    // Tagger.tsx means to select the new box after creating it, but the reload's setAnnotations clears the selection,
+    // so today the organizer clicks the box first. This pins today's behavior.
     await page.getByRole('button', { name: 'הזזה / בחירה' }).click()
     await page.mouse.click(x, y)
     await expect(page.getByText('עדיין בלי שם')).toBeVisible()
@@ -544,7 +548,7 @@ test.describe.serial('a group photo from upload to delete', () => {
     await tagger(page)
     await counter(page, 1, 1)
     await page.getByRole('button', { name: 'הזזה / בחירה' }).click()
-    const { x, y } = await canvasCenter(page)
+    const { x, y, awayX, awayY } = await canvasCenter(page)
     await page.mouse.click(x, y)
     await expect(page.getByText(boxPerson, { exact: true })).toBeVisible()
 
@@ -553,7 +557,7 @@ test.describe.serial('a group photo from upload to delete', () => {
     await page.mouse.move(x + 40, y + 20, { steps: 8 })
     await page.mouse.up()
     // The move is saved when the box is let go of, by clicking on the picture outside it.
-    await page.mouse.click(x - 300, y - 200)
+    await page.mouse.click(awayX, awayY)
     await expect
       .poll(async () => {
         const moved = await boxOf()
@@ -734,6 +738,39 @@ test.describe('branding, feedback, backup and demo data', () => {
     expect(await (await page.request.get('/api/admin/stats')).json()).toEqual(statsBefore)
   })
 
-  // The class passcode is set only through the CLASS_PASSCODE variable: the admin page and the API have no way to
-  // change it, so there is nothing to click and no test for that journey.
+  // There is no admin control for the class passcode: it is the CLASS_PASSCODE variable. A session cookie carries a hash
+  // of it, so a server started with another passcode (and the same session secret, as after a redeploy that changes
+  // only the variable) refuses sessions made before.
+  test('a changed class passcode ends the old sessions and the old passcode', async () => {
+    const secret = 'e2e-fixed-session-secret-for-two-servers'
+    const oldPasscode = 'class-e2e-passcode'
+    const newPasscode = 'class-e2e-changed-passcode'
+    const first = await startServer({ env: { SESSION_SECRET: secret } })
+    try {
+      const second = await startServer({ env: { SESSION_SECRET: secret, CLASS_PASSCODE: newPasscode } })
+      try {
+        const post = (base: string, passcode: string) =>
+          fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ passcode }) })
+        const session = async (base: string, cookie: string) => (await (await fetch(`${base}/api/session`, { headers: { cookie } })).json()).role
+
+        const login1 = await post(first.url, oldPasscode)
+        expect(login1.status).toBe(200)
+        const cookie = login1.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+        expect(await session(first.url, cookie)).toBe('member')
+        expect((await fetch(`${second.url}/api/people`, { headers: { cookie } })).status).toBe(401)
+        expect(await session(second.url, cookie)).toBeNull()
+
+        expect((await post(second.url, oldPasscode)).status).toBe(401)
+        const fresh = await post(second.url, newPasscode)
+        expect(fresh.status).toBe(200)
+        const freshCookie = fresh.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+        expect(await session(second.url, freshCookie)).toBe('member')
+        expect((await fetch(`${second.url}/api/people`, { headers: { cookie: freshCookie } })).status).toBe(200)
+      } finally {
+        await second.stop()
+      }
+    } finally {
+      await first.stop()
+    }
+  })
 })
