@@ -32,6 +32,7 @@ import { addQuote, addQuoteComment, listQuotes, reactToQuote } from './quotes.ts
 import { listCredits } from './credits.ts'
 import { addFeedback, feedbackSenderFor, type SendEmail } from './feedback.ts'
 import { configuredMailer, type Mailer } from './email.ts'
+import { readJson } from './http.ts'
 import { redeemSignInLink, sendSignInLink } from './recovery.ts'
 import { deleteNote, emailNoteAlert, listNotes, markNoteRead, sendNote, unreadNotes } from './notes.ts'
 
@@ -59,12 +60,6 @@ function sendFile(c: Context, root: string, relPath: string, cacheControl: strin
     'Content-Type': MIME[path.extname(full).toLowerCase()] ?? 'application/octet-stream',
     'Cache-Control': cacheControl,
   })
-}
-
-/** The JSON body when it is an object, else {} (bad JSON, null, a number, an array), so handlers can read its fields safely. */
-async function readJson(c: Context): Promise<Record<string, unknown>> {
-  const body: unknown = await c.req.json().catch(() => null)
-  return body !== null && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {}
 }
 
 const HEBREW = /[\u0590-\u05FF]/
