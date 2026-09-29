@@ -40,6 +40,11 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
   const owners = useRef(new Map<string, number | null>())
   const staffIds = useRef(new Set<string>())
   const tags = useRef(scene.tags)
+  // The box just drawn, to be selected again once the reload has put it back on the canvas.
+  const drawn = useRef<number | null>(null)
+  // The save a box change started, so leaving can wait for it. It goes back to a resolved promise once it has settled.
+  const saving = useRef<Promise<unknown>>(Promise.resolve())
+  const finishing = useRef(false)
   const [drawing, setDrawing] = useState(false)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [query, setQuery] = useState('')
@@ -98,13 +103,17 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
     annotator.on('createAnnotation', (annotation) =>
       act(async () => {
         const tag = await api<Tag>(`/api/admin/scenes/${scene.id}/tags`, { json: boxOf(annotation as ImageAnnotation) })
-        setSelectedId(tag.id)
+        drawn.current = tag.id
       }, rollback),
     )
     annotator.on('updateAnnotation', (annotation) => {
       // A box still being created has no server id yet; the reload after creating it redraws it.
       if (!owners.current.has(annotation.id)) return
-      act(() => api(`/api/admin/tags/${annotation.id}`, { method: 'PATCH', json: boxOf(annotation as ImageAnnotation) }), rollback)
+      const save = act(() => api(`/api/admin/tags/${annotation.id}`, { method: 'PATCH', json: boxOf(annotation as ImageAnnotation) }), rollback)
+      saving.current = save
+      save.then(() => {
+        if (saving.current === save) saving.current = Promise.resolve()
+      })
     })
     annotator.on('selectionChanged', (annotations) => {
       const id = Number(annotations[0]?.id)
@@ -112,6 +121,8 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
       setQuery('')
     })
     return () => {
+      // Leaving any other way (a header tab) can't wait, but the save is still sent: the change is reported on a timer.
+      annotator.cancelSelected()
       annotator.destroy()
       viewer.destroy()
       anno.current = null
@@ -122,6 +133,11 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
   // The server is the source of truth; mirror its tags into the annotation layer after every reload.
   useEffect(() => {
     anno.current?.setAnnotations(scene.tags.map(toAnnotation), true)
+    // The redraw dropped the selection; select the new box again so its naming panel opens.
+    if (drawn.current != null && scene.tags.some((t) => t.id === drawn.current)) {
+      anno.current?.setSelected(String(drawn.current))
+      drawn.current = null
+    }
   }, [scene.tags])
 
   useEffect(() => {
@@ -138,6 +154,19 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
       onError?.()
     }
     if (result.status === 'not-reloaded') setReloadFailed(reloadFailedText(true))
+    return result.status
+  }
+
+  // A moved box is only saved once it is deselected, so deselect, wait for that save, and stay if it failed.
+  async function finish() {
+    if (finishing.current) return
+    finishing.current = true
+    anno.current?.cancelSelected()
+    // @annotorious/openseadragon 3.8.10 reports the change from a 1 ms timer set inside cancelSelected(); this one is
+    // queued behind it. If an upgrade changes that, the move is lost again (the Done tests in e2e/admin.spec.ts catch it).
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    if ((await saving.current) === 'not-saved') finishing.current = false
+    else onClose()
   }
 
   function retryReload() {
@@ -177,7 +206,7 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
           <h2 className="font-display text-lg leading-tight" dir="auto">
             {scene.title}
           </h2>
-          <button className="btn btn-plain btn-sm" onClick={onClose}>
+          <button className="btn btn-plain btn-sm" onClick={finish}>
             סיום
           </button>
         </div>

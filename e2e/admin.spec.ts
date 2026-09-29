@@ -519,10 +519,7 @@ test.describe.serial('a group photo from upload to delete', () => {
     await page.mouse.move(x + 60, y + 40, { steps: 5 })
     await page.mouse.click(x + 60, y + 40)
     await counter(page, 1, 0)
-    // Tagger.tsx means to select the new box after creating it, but the reload's setAnnotations clears the selection,
-    // so today the organizer clicks the box first. This pins today's behavior.
-    await page.getByRole('button', { name: 'הזזה / בחירה' }).click()
-    await page.mouse.click(x, y)
+    // The new box is left selected, so the naming panel opens without clicking the box.
     await expect(page.getByText('עדיין בלי שם')).toBeVisible()
 
     await page.getByPlaceholder('הקלידו שם...').fill(boxPerson)
@@ -574,8 +571,8 @@ test.describe.serial('a group photo from upload to delete', () => {
     await removePerson(page, personId)
   })
 
-  test('a moved box is kept when the organizer leaves with Done', async ({ page }) => {
-    test.fixme(true, 'a box dragged in the tagger is only saved once it is deselected; clicking סיום right after the drag loses the move')
+  // Draws a box, drags it and leaves it selected and unsaved. Returns the box as the server has it before the move.
+  const dragNewBox = async (page: Page) => {
     await login(page, 'admin')
     const scene = (await getScenes(page)).find((s) => s.title === title)!
     await tagger(page)
@@ -593,8 +590,49 @@ test.describe.serial('a group photo from upload to delete', () => {
     await page.mouse.down()
     await page.mouse.move(x + 40, y + 20, { steps: 8 })
     await page.mouse.up()
+    const movedX = async () => (await getScenes(page)).find((s) => s.id === scene.id)!.tags[0].x
+    return { drawn, movedX }
+  }
+
+  test('a moved box is kept when the organizer leaves with Done', async ({ page }) => {
+    const { drawn, movedX } = await dragNewBox(page)
     await page.getByRole('button', { name: 'סיום' }).click()
-    await expect.poll(async () => (await getScenes(page)).find((s) => s.id === scene.id)!.tags[0].x).toBeGreaterThan(drawn.x)
+    await expect(page.getByRole('button', { name: 'זיהוי פנים אוטומטי' })).toHaveCount(0)
+    expect(await movedX()).toBeGreaterThan(drawn.x)
+    await page.request.delete(`/api/admin/tags/${drawn.id}`)
+  })
+
+  test('a moved box is kept when the organizer leaves through a header tab', async ({ page }) => {
+    const { drawn, movedX } = await dragNewBox(page)
+    await page.getByRole('link', { name: 'ספר מחזור' }).click()
+    // Leaving this way cannot wait for the save, so it lands a moment later.
+    await expect.poll(movedX).toBeGreaterThan(drawn.x)
+    await page.request.delete(`/api/admin/tags/${drawn.id}`)
+  })
+
+  test('Done waits for a save that is already running, and stays open with the error when it fails', async ({ page }) => {
+    const { drawn, movedX } = await dragNewBox(page)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    await page.route(`**/api/admin/tags/${drawn.id}`, async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback()
+      await gate
+      await route.fulfill({ status: 500, json: { error: 'השמירה נכשלה' } })
+    })
+    // Clicking the picture outside the box starts the save; Done is clicked while it is still on its way.
+    const { awayX, awayY } = await canvasCenter(page)
+    await page.mouse.click(awayX, awayY)
+    await page.getByRole('button', { name: 'סיום' }).click()
+    release()
+    await expect(page.getByText('השמירה נכשלה')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'זיהוי פנים אוטומטי' })).toBeVisible()
+    expect(await movedX()).toBe(drawn.x)
+
+    // The failed move was taken back, so a second Done has nothing left to save and closes.
+    await page.unroute(`**/api/admin/tags/${drawn.id}`)
+    await page.getByRole('button', { name: 'סיום' }).click()
+    await expect(page.getByRole('button', { name: 'זיהוי פנים אוטומטי' })).toHaveCount(0)
+    expect(await movedX()).toBe(drawn.x)
     await page.request.delete(`/api/admin/tags/${drawn.id}`)
   })
 
