@@ -3,6 +3,7 @@ import { api, faceUrl, type Person, type Scene, type Tag } from '../api.ts'
 import { useStore } from '../store.tsx'
 import { possibleDuplicates } from '../roster.ts'
 import { isTypingTarget } from '../adminKeys.ts'
+import { oneAtATime } from '../adminOnce.ts'
 import { nextLive, previousLive } from '../adminQueue.ts'
 
 const VIEWS = [
@@ -95,8 +96,8 @@ export default function Roster() {
   const [queue, setQueue] = useState<number[] | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   // One answer or new profile at a time, so a double click doesn't skip a person or create two.
-  const inFlight = useRef(false)
   const [busy, setBusy] = useState(false)
+  const [once] = useState(() => oneAtATime(setBusy))
 
   const load = useCallback(async () => {
     setScenes((await api<Scene[]>('/api/admin/scenes')).filter((s) => s.kind === 'group'))
@@ -131,17 +132,6 @@ export default function Roster() {
       if (advance) setIndex(at + 1)
     } catch (err) {
       setNotice(`שגיאה: ${(err as Error).message}`)
-    }
-  }
-  const once = async (action: () => Promise<unknown>) => {
-    if (inFlight.current) return
-    inFlight.current = true
-    setBusy(true)
-    try {
-      await action()
-    } finally {
-      inFlight.current = false
-      setBusy(false)
     }
   }
   const patchPerson = (id: number, json: Partial<Person>) => api(`/api/admin/people/${id}`, { method: 'PATCH', json })

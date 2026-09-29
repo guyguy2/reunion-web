@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { isTypingTarget } from '../web/src/adminKeys.ts'
+import { oneAtATime } from '../web/src/adminOnce.ts'
 import { nextLive, previousLive } from '../web/src/adminQueue.ts'
 
 // The tests run without a DOM, so this stands in for an element: `closest` walks up the parents like the browser's,
-// matching tag names and [attribute] selectors, and like the browser's it fails when called without its element.
+// matching tag names, [attribute] and [attribute="value"] selectors and :not(), and like the browser's it fails when
+// called without its element.
 interface FakeElement {
   tagName: string
   attributes: Record<string, string>
@@ -29,8 +31,11 @@ function element(tagName: string, attributes: Record<string, string> = {}, paren
 }
 
 function matches(node: FakeElement, part: string): boolean {
-  const attribute = /^\[([\w-]+)\]$/.exec(part)
-  return attribute ? attribute[1] in node.attributes : node.tagName === part.toUpperCase()
+  const not = /^(.+):not\((.+)\)$/.exec(part)
+  if (not) return matches(node, not[1]) && !matches(node, not[2])
+  const attribute = /^\[([\w-]+)(?:="([^"]*)")?\]$/.exec(part)
+  if (attribute) return attribute[1] in node.attributes && (attribute[2] === undefined || node.attributes[attribute[1]] === attribute[2])
+  return node.tagName === part.toUpperCase()
 }
 
 const typing = (target: FakeElement | object | null) => isTypingTarget(target as EventTarget | null)
@@ -46,6 +51,11 @@ describe('roster keyboard shortcuts', () => {
     const editor = element('div', { contenteditable: 'true' })
     expect(typing(editor)).toBe(true)
     expect(typing(element('span', {}, element('span', {}, editor)))).toBe(true)
+  })
+
+  it('still work on text marked as not editable', () => {
+    expect(typing(element('div', { contenteditable: 'false' }))).toBe(false)
+    expect(typing(element('span', {}, element('div', { contenteditable: 'false' })))).toBe(false)
   })
 
   it('still work on buttons, plain text and the page itself', () => {
@@ -101,5 +111,38 @@ describe('roster review queue', () => {
     const at = 2
     expect(nextLive(queue, at + 1, afterStaff)).toBe(4)
     expect(queue[nextLive(queue, at, afterStaff)]).toBe(5)
+  })
+})
+
+describe('one roster action at a time', () => {
+  it('ignores a second call while the first is still running', async () => {
+    let finish = () => {}
+    const busy = vi.fn()
+    const once = oneAtATime(busy)
+    const first = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)))
+    const second = vi.fn(async () => {})
+
+    const running = once(first)
+    await once(second)
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(second).not.toHaveBeenCalled()
+    expect(busy).toHaveBeenLastCalledWith(true)
+
+    finish()
+    await running
+    expect(busy).toHaveBeenLastCalledWith(false)
+    await once(second)
+    expect(second).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets the next call run after one fails', async () => {
+    const busy = vi.fn()
+    const once = oneAtATime(busy)
+    await expect(once(() => Promise.reject(new Error('network down')))).rejects.toThrow('network down')
+    expect(busy).toHaveBeenLastCalledWith(false)
+
+    const next = vi.fn(async () => {})
+    await once(next)
+    expect(next).toHaveBeenCalledTimes(1)
   })
 })
