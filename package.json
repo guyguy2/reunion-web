@@ -17,7 +17,8 @@
     "release": "pnpm typecheck && pnpm test && pnpm build && pnpm release:check && railway variables --set \"APP_VERSION=$(date '+%Y-%m-%d %H:%M') $(git rev-parse --short HEAD)\" --skip-deploys && railway up --detach",
     "release:check": "test -z \"$(git status --porcelain)\" || { echo 'Release refused: commit or remove these files first. railway up uploads the working tree, but APP_VERSION names the last commit.' >&2; git status --short >&2; exit 1; }",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "pnpm build && playwright test"
   },
   "license": "MIT",
   "packageManager": "pnpm@10.33.0",
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@annotorious/openseadragon": "^3.8.10",
     "@mediapipe/tasks-vision": "^1.0.1",
+    "@playwright/test": "1.62.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.19.0",
     "@types/openseadragon": "^6.0.0",
