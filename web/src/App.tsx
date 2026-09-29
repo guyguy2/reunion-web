@@ -1,6 +1,6 @@
 import { Fragment, lazy, Suspense, useEffect, useState, type CSSProperties } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
-import { api, type Role } from './api.ts'
+import { api, editToken, type Role } from './api.ts'
 import { StoreProvider, useStore } from './store.tsx'
 import Gate from './components/Gate.tsx'
 import Cassette from './components/Cassette.tsx'
@@ -88,7 +88,8 @@ function Shell() {
         <Feedback />
         <button
           className="cursor-pointer text-sm font-bold underline decoration-2 underline-offset-2 opacity-70 hover:opacity-100"
-          onClick={() => api('/api/logout', { method: 'POST' }).then(() => location.assign('/'))}
+          // The request carries the edit token so the server can revoke it; then this browser forgets it too.
+          onClick={() => api('/api/logout', { method: 'POST' }).then(() => (editToken.clear(), location.assign('/')))}
         >
           התנתקות
         </button>
