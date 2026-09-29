@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 import sharp from 'sharp'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../server/app.ts'
-import { clientKey, createLoginLimiter, createThrottle, sha256 } from '../server/auth.ts'
+import { clientKey, createLockout, createLoginLimiter, createThrottle, sha256 } from '../server/auth.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
 import { gmailRelayMailer, type Mailer } from '../server/email.ts'
@@ -105,6 +105,29 @@ describe('login limiter', () => {
     // A forgotten address counts again from scratch.
     for (let i = 0; i < 10; i++) limiter.fail('a')
     expect(limiter.blocked('a')).toBe(true)
+  })
+})
+
+describe('limiter memory', () => {
+  it('sweeps out keys whose window has passed once a limiter holds more than 10000', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const limiter = createLoginLimiter()
+    const throttle = createThrottle({ max: 5, windowMs: 15 * MINUTE })
+    const lockout = createLockout()
+    const add = (key: string) => {
+      limiter.fail(key)
+      throttle.hit(key)
+      lockout.fail(key)
+    }
+    const sizes = () => [limiter.size(), throttle.size(), lockout.size()]
+
+    for (let i = 0; i <= 10_000; i++) add(`10.62.${i}`)
+    // Past 10000, but every key is still in its window: nothing goes.
+    expect(sizes()).toEqual([10_001, 10_001, 10_001])
+
+    vi.setSystemTime(Date.now() + 15 * MINUTE + 1)
+    add('10.63.0.1')
+    expect(sizes()).toEqual([1, 1, 1])
   })
 })
 

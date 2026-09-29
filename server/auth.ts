@@ -101,13 +101,26 @@ function recentTimes(map: Map<string, number[]>, key: string, cutoff: number): n
   return list
 }
 
+/** Past this many keys, a limiter sweeps out the ones it is done with, so addresses that never come back do not pile up. */
+const MAX_KEYS = 10_000
+
+/** Once `map` holds more than MAX_KEYS keys, deletes every key whose value `done` says is past its window. */
+function sweep<T>(map: Map<string, T>, done: (value: T) => boolean) {
+  if (map.size <= MAX_KEYS) return
+  for (const [key, value] of map) if (done(value)) map.delete(key)
+}
+
 // In-memory failed-login limiter. Fine for a single instance.
 export function createLoginLimiter() {
   const failures = new Map<string, number[]>()
   const recent = (key: string) => recentTimes(failures, key, Date.now() - FAILURE_WINDOW_MS)
   return {
     blocked: (key: string) => recent(key).length >= MAX_FAILURES,
-    fail: (key: string) => void failures.set(key, [...recent(key), Date.now()]),
+    fail(key: string) {
+      failures.set(key, [...recent(key), Date.now()])
+      const cutoff = Date.now() - FAILURE_WINDOW_MS
+      sweep(failures, (list) => list.every((t) => t <= cutoff))
+    },
     clear: (key: string) => void failures.delete(key),
     /** How many keys it is holding. */
     size: () => failures.size,
@@ -127,8 +140,10 @@ export function createThrottle(opts: { max: number; windowMs: number; globalMax?
   /** Records a hit on `key`, and on everyone's count when there is a global limit. */
   const hit = (key: string) => {
     const now = Date.now()
-    hits.set(key, [...recentTimes(hits, key, cutoff()), now])
+    const since = cutoff()
+    hits.set(key, [...recentTimes(hits, key, since), now])
     if (opts.globalMax !== undefined) everyone.push(now)
+    sweep(hits, (list) => list.every((t) => t <= since))
   }
   return {
     check,
@@ -151,13 +166,16 @@ export function createThrottle(opts: { max: number; windowMs: number; globalMax?
  * and a day after its last block ran out the key starts over. In memory, like the limiter.
  */
 export function createLockout() {
-  const entries = new Map<string, { failures: number[]; blocks: number; until: number }>()
+  type Entry = { failures: number[]; blocks: number; until: number }
+  const entries = new Map<string, Entry>()
+  /** No failures left in the window, and a day past its last block. */
+  const done = (entry: Entry, now: number) => entry.failures.every((t) => t <= now - FAILURE_WINDOW_MS) && entry.until + MAX_LOCKOUT_MS <= now
   const current = (key: string) => {
     const entry = entries.get(key)
     if (!entry) return undefined
     const now = Date.now()
     entry.failures = entry.failures.filter((t) => t > now - FAILURE_WINDOW_MS)
-    if (entry.failures.length === 0 && entry.until + MAX_LOCKOUT_MS <= now) {
+    if (done(entry, now)) {
       entries.delete(key)
       return undefined
     }
@@ -169,14 +187,16 @@ export function createLockout() {
       const now = Date.now()
       const entry = current(key) ?? { failures: [], blocks: 0, until: 0 }
       entries.set(key, entry)
-      if (entry.blocks === 0) {
-        entry.failures.push(now)
-        if (entry.failures.length < MAX_FAILURES) return
+      if (entry.blocks === 0) entry.failures.push(now)
+      if (entry.blocks > 0 || entry.failures.length >= MAX_FAILURES) {
+        entry.until = now + Math.min(FAILURE_WINDOW_MS * 2 ** entry.blocks, MAX_LOCKOUT_MS)
+        entry.blocks++
       }
-      entry.until = now + Math.min(FAILURE_WINDOW_MS * 2 ** entry.blocks, MAX_LOCKOUT_MS)
-      entry.blocks++
+      sweep(entries, (e) => done(e, now))
     },
     clear: (key: string) => void entries.delete(key),
+    /** How many keys it is holding. */
+    size: () => entries.size,
   }
 }
 
