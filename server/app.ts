@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { Hono } from 'hono'
-import type { Context } from 'hono'
+import type { Context, MiddlewareHandler } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import type { Config } from './config.ts'
 import { bumpCounter, getCounter, openDb, type Db, type PersonRow, type TagRow } from './db.ts'
 import {
@@ -18,7 +19,7 @@ import {
   startSession,
   type AppEnv,
 } from './auth.ts'
-import { MAX_UPLOAD_BYTES, cropFace, readImageField } from './images.ts'
+import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, cropFace, readImageField } from './images.ts'
 import { addPhoto, deletePhoto, deletePhotos, getPerson, insertPerson, listPeople, listPhotos, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { getScene, listScenes, serializeTag } from './scenes.ts'
 import { adminRoutes } from './admin.ts'
@@ -58,6 +59,26 @@ function sendFile(c: Context, root: string, relPath: string, cacheControl: strin
   })
 }
 
+/** The JSON body when it is an object, else {} (bad JSON, null, a number, an array), so handlers can read its fields safely. */
+async function readJson(c: Context): Promise<Record<string, unknown>> {
+  const body: unknown = await c.req.json().catch(() => null)
+  return body !== null && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {}
+}
+
+const MB = 1024 * 1024
+const limitBody = (maxSize: number) => bodyLimit({ maxSize, onError: (c) => c.json({ error: 'הקובץ או הבקשה גדולים מדי' }, 413) })
+const smallBody = limitBody(64 * 1024)
+// Uploads and organizer imports get room for their file. Every other API request is a small JSON body.
+const largeBodies: [RegExp, MiddlewareHandler][] = [
+  [/^\/api\/me\/photo\/[^/]+$/, limitBody(MAX_UPLOAD_BYTES + MB)],
+  [/^\/api\/admin\/people\/[^/]+\/photo\/[^/]+$/, limitBody(MAX_UPLOAD_BYTES + MB)],
+  [/^\/api\/admin\/scenes$/, limitBody(MAX_SCENE_BYTES + MB)],
+  [/^\/api\/admin\/import-csv$/, limitBody(2 * MB)],
+  [/^\/api\/admin\/scenes\/[^/]+\/tags\/batch$/, limitBody(2 * MB)],
+  [/^\/api\/admin\/roster\/import$/, limitBody(2 * MB)],
+]
+const largeBodyLimit = (c: Context) => largeBodies.find(([route]) => route.test(c.req.path))?.[1]
+
 function loadEvent() {
   // The real event details stay out of git in EVENT_JSON; content/event.json is only a placeholder.
   const event = JSON.parse(process.env.EVENT_JSON || fs.readFileSync(path.resolve('content/event.json'), 'utf8'))
@@ -85,25 +106,40 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
 
   app.get('/healthz', (c) => c.json({ ok: true }))
 
+  // Small bodies only, before anything reads them. The larger upload limits apply once the session is checked.
+  app.use('/api/*', (c, next) => (largeBodyLimit(c) ? next() : smallBody(c, next)))
+
   // ---- Public: session only ----
   app.get('/api/session', async (c) => c.json({ role: await readRole(c, config) }))
 
+  // Wrong passcodes are counted per address, once for the class passcode and once for the admin one. A wrong guess
+  // could be aimed at either, so it counts against both, and only an admin login resets the admin count:
+  // logging in with the class passcode in between does not buy more admin guesses.
   app.post('/api/login', async (c) => {
-    const key = clientKey(c)
-    if (limiter.blocked(key)) return c.json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.' }, 429)
-    const body = await c.req.json().catch(() => ({}))
+    const ip = clientKey(c)
+    const classKey = `login:${ip}`
+    const adminKey = `admin:${ip}`
+    if (limiter.blocked(classKey)) return c.json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.' }, 429)
+    const body = await readJson(c)
     const role = typeof body.passcode === 'string' ? roleForPasscode(config, body.passcode) : null
-    if (!role) {
-      limiter.fail(key)
-      return c.json({ error: 'סיסמה שגויה' }, 401)
+    const adminBlocked = limiter.blocked(adminKey)
+    // While admin guesses are blocked, the admin passcode gets the same answer as a wrong one, so it cannot be confirmed.
+    if (!role || (role === 'admin' && adminBlocked)) {
+      limiter.fail(classKey)
+      if (!adminBlocked) limiter.fail(adminKey)
+      return adminBlocked ? c.json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.' }, 429) : c.json({ error: 'סיסמה שגויה' }, 401)
     }
-    limiter.clear(key)
+    limiter.clear(classKey)
+    if (role === 'admin') limiter.clear(adminKey)
     await startSession(c, config, role)
     bumpCounter(db, 'visits')
     return c.json({ role })
   })
 
   app.post('/api/logout', (c) => {
+    // Also retires this device's key, so a copy of it left on the device stops working.
+    const token = c.req.header('x-edit-token')
+    if (token) db.prepare('DELETE FROM device_tokens WHERE token_hash = ?').run(sha256(token))
     endSession(c)
     return c.json({ ok: true })
   })
@@ -111,6 +147,10 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   // ---- Everything below needs the class passcode ----
   app.use('/api/*', requireSession(config))
   app.use('/media/*', requireSession(config))
+  app.use('/api/*', (c, next) => {
+    const limit = largeBodyLimit(c)
+    return limit ? limit(c, next) : next()
+  })
 
   app.get('/media/*', (c) => {
     // Split on the raw path, then let sendFile confine the decoded remainder to that one folder.
@@ -260,9 +300,9 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   // so signing in here never logs out the others. Wrong guesses are limited per device and per profile.
   app.post('/api/people/:id/login', async (c) => {
     const person = getPerson(db, Number(c.req.param('id')))
-    const keys = [clientKey(c), `person:${person?.id}`]
+    const keys = [`pin:${clientKey(c)}`, `pin:${person?.id}`]
     if (keys.some((k) => limiter.blocked(k))) return c.json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.' }, 429)
-    const body = await c.req.json().catch(() => ({}))
+    const body = await readJson(c)
     if (!person?.pin_hash) return c.json({ error: 'לפרופיל הזה עדיין אין קוד. פתחו את קישור העריכה או בקשו מהמארגנים לאפס אותו.' }, 400)
     if (typeof body.pin !== 'string' || !verifyPin(body.pin, person.pin_hash)) {
       keys.forEach((k) => limiter.fail(k))
@@ -287,7 +327,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   })
 
   app.post('/api/signin', async (c) => {
-    const body = await c.req.json().catch(() => ({}))
+    const body = await readJson(c)
     const result = typeof body.token === 'string' ? redeemSignInLink(db, body.token) : null
     if (!result) return c.json({ error: 'הקישור כבר לא בתוקף. בקשו קישור חדש.' }, 400)
     return c.json({ token: result.deviceToken })
@@ -311,7 +351,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   app.put('/api/me/pin', async (c) => {
     const me = owner(c)
     if (!me) return c.json({ error: 'קישור העריכה אינו תקף' }, 403)
-    const body = await c.req.json().catch(() => ({}))
+    const body = await readJson(c)
     try {
       updatePerson(db, me.id, { pin_hash: hashPin(typeof body.pin === 'string' ? body.pin : '') })
     } catch (err) {
@@ -439,7 +479,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   // person or as a new, unclaimed profile. Organizers can correct mistakes from the admin page.
   app.post('/api/tags/:id/suggest', async (c) => {
     const tagId = Number(c.req.param('id'))
-    const body = await c.req.json().catch(() => ({}))
+    const body = await readJson(c)
     let personId: number
     if (body.personId != null) {
       if (!getPerson(db, Number(body.personId))) return c.json({ error: 'Unknown person' }, 400)
@@ -483,7 +523,12 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
 
   // ---- Built frontend (single-page app) ----
   app.get('*', (c) => {
-    const rel = c.req.path === '/' ? 'index.html' : decodeURIComponent(c.req.path.slice(1))
+    let rel: string
+    try {
+      rel = c.req.path === '/' ? 'index.html' : decodeURIComponent(c.req.path.slice(1))
+    } catch {
+      return c.notFound()
+    }
     const isAsset = rel.startsWith('assets/')
     const file = fs.existsSync(path.join(config.webDir, rel)) && path.extname(rel) ? rel : 'index.html'
     return sendFile(c, config.webDir, file, isAsset ? 'public, max-age=31536000, immutable' : 'no-cache')
