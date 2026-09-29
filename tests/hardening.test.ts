@@ -433,6 +433,18 @@ describe('links in emails without a public address', () => {
     expect(outbox).toHaveLength(0)
     expect(logged).toHaveBeenCalledTimes(1)
   })
+
+  it('logs nothing for a note whose alert would not have gone out anyway', async () => {
+    const { app: noUrl } = mailApp({ publicUrl: undefined })
+    const noMail = createApp({ ...config, publicUrl: undefined }, db, null)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const note = (target: App, to: number) => target.request('/api/notes', json('POST', { to, message: 'See you there', anonymous: true }, { Cookie: member }))
+
+    // No address on the profile, or no email set up on the site.
+    expect((await note(noUrl, insertPerson(db, { name: 'Offline Friend' }))).status).toBe(201)
+    expect((await note(noMail, insertPerson(db, { name: 'Pen Pal', email: 'penpal.two@example.test' }))).status).toBe(201)
+    expect(logged).not.toHaveBeenCalled()
+  })
 })
 
 describe('feedback email', () => {

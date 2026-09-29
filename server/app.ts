@@ -437,7 +437,8 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
       return badRequest(c, err)
     }
     if (!config.publicUrl) {
-      console.error(`Note alert for person ${recipient.id} skipped: PUBLIC_URL is not set, so its links would have no address`)
+      // Logged only when an alert would otherwise have gone out.
+      if (mailer && recipient.email) console.error(`Note alert for person ${recipient.id} skipped: PUBLIC_URL is not set, so its links would have no address`)
       return c.json({ ok: true }, 201)
     }
     // Not awaited: the note is already delivered, and the Gmail relay can take half a minute.
