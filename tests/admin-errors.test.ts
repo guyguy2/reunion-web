@@ -254,3 +254,62 @@ describe('backup export', () => {
     for (const table of ['person_photos', 'quotes', 'quote_comments', 'quote_reactions', 'tapes', 'videos']) expect(backup[table]).toHaveLength(count(table))
   })
 })
+
+describe('the photo cap', () => {
+  const TOO_MANY = `אפשר להעלות עד ${MAX_PHOTOS_PER_KIND} תמונות. מחקו אחת כדי להוסיף חדשה.`
+  const uploads = () => fs.readdirSync(path.join(dataDir, 'uploads')).length
+
+  it('refuses one photo past the cap', async () => {
+    const id = insertPerson(db, { name: 'Morgan Price' })
+    for (let i = 0; i < MAX_PHOTOS_PER_KIND; i++) await addPhoto(db, dataDir, id, 'then', await picture())
+    await expect(addPhoto(db, dataDir, id, 'then', await picture())).rejects.toThrow(TOO_MANY)
+    expect(listPhotos(db, id, 'then')).toHaveLength(MAX_PHOTOS_PER_KIND)
+  })
+
+  it('lets only one of two uploads at once take the last place, and deletes the other file', async () => {
+    const id = insertPerson(db, { name: 'Taylor Reed' })
+    for (let i = 0; i < MAX_PHOTOS_PER_KIND - 1; i++) await addPhoto(db, dataDir, id, 'now', await picture())
+    const files = uploads()
+    const [a, b] = [await picture(), await picture()]
+    const results = await Promise.allSettled([addPhoto(db, dataDir, id, 'now', a), addPhoto(db, dataDir, id, 'now', b)])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    const refused = results.filter((r) => r.status === 'rejected')
+    expect(refused).toHaveLength(1)
+    expect(((refused[0] as PromiseRejectedResult).reason as Error).message).toBe(TOO_MANY)
+    expect(listPhotos(db, id, 'now')).toHaveLength(MAX_PHOTOS_PER_KIND)
+    expect(uploads()).toBe(files + 1)
+    expect(getPerson(db, id)!.now_photo).toBe(listPhotos(db, id, 'now')[0].path)
+  })
+})
+
+describe('duplicate tapes and videos', () => {
+  it('refuses the same tape twice with the Hebrew message', async () => {
+    const body = { url: 'https://www.youtube.com/watch?v=dupTape0001', title: 'Slow dance' }
+    await addTape(db, body)
+    await expect(addTape(db, body)).rejects.toThrow('הקלטת הזו כבר על המדף')
+  })
+
+  it('refuses a tape that someone else added while the title was being looked up', async () => {
+    const lookup = async () => {
+      db.prepare(`INSERT INTO tapes (provider, kind, external_id, title) VALUES ('youtube', 'video', 'dupTape0002', 'Got there first')`).run()
+      return 'Looked up'
+    }
+    await expect(addTape(db, { url: 'https://youtu.be/dupTape0002' }, lookup)).rejects.toThrow('הקלטת הזו כבר על המדף')
+    expect(db.prepare(`SELECT title FROM tapes WHERE external_id = 'dupTape0002'`).all()).toEqual([{ title: 'Got there first' }])
+  })
+
+  it('refuses the same video twice with the Hebrew message', async () => {
+    const body = { url: 'https://www.youtube.com/watch?v=dupClip0001', title: 'Prom night' }
+    await addVideo(db, body)
+    await expect(addVideo(db, body)).rejects.toThrow('הסרטון הזה כבר בספרייה')
+  })
+
+  it('refuses a video that someone else added while the title was being looked up', async () => {
+    const lookup = async () => {
+      db.prepare(`INSERT INTO videos (provider, external_id, title) VALUES ('youtube', 'dupClip0002', 'Got there first')`).run()
+      return 'Looked up'
+    }
+    await expect(addVideo(db, { url: 'https://youtu.be/dupClip0002' }, lookup)).rejects.toThrow('הסרטון הזה כבר בספרייה')
+    expect(db.prepare(`SELECT title FROM videos WHERE external_id = 'dupClip0002'`).all()).toEqual([{ title: 'Got there first' }])
+  })
+})

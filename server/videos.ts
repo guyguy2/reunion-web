@@ -160,8 +160,10 @@ export async function addVideo(db: Db, body: unknown, titleLookup = lookupVideoT
   const exists = db.prepare('SELECT 1 FROM videos WHERE provider = ? AND external_id = ?').get(source.provider, source.externalId)
   if (exists) throw new Error('הסרטון הזה כבר בספרייה')
   const finalTitle = title || (await titleLookup(source)) || FALLBACK_TITLE[source.provider]
+  // Someone may have added the same video while the title was being looked up.
   const result = db
-    .prepare('INSERT INTO videos (provider, external_id, title, note, added_by) VALUES (?, ?, ?, ?, ?)')
+    .prepare('INSERT INTO videos (provider, external_id, title, note, added_by) VALUES (?, ?, ?, ?, ?) ON CONFLICT (provider, external_id) DO NOTHING')
     .run(source.provider, source.externalId, finalTitle, note, addedBy)
+  if (result.changes === 0) throw new Error('הסרטון הזה כבר בספרייה')
   return serializeVideo(db.prepare('SELECT * FROM videos WHERE id = ?').get(Number(result.lastInsertRowid)) as unknown as VideoRow)
 }

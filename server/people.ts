@@ -180,13 +180,26 @@ function syncPrimary(db: Db, personId: number, kind: PhotoKind) {
 
 /** Stores an uploaded image and attaches it to the person. Throws once they are at the cap. */
 export async function addPhoto(db: Db, dataDir: string, personId: number, kind: PhotoKind, input: Buffer): Promise<PersonPhotoRow> {
-  if (listPhotos(db, personId, kind).length >= MAX_PHOTOS_PER_KIND) {
-    throw new Error(`אפשר להעלות עד ${MAX_PHOTOS_PER_KIND} תמונות. מחקו אחת כדי להוסיף חדשה.`)
+  const checkRoom = () => {
+    if (listPhotos(db, personId, kind).length >= MAX_PHOTOS_PER_KIND) {
+      throw new Error(`אפשר להעלות עד ${MAX_PHOTOS_PER_KIND} תמונות. מחקו אחת כדי להוסיף חדשה.`)
+    }
   }
+  checkRoom()
   const rel = await saveUpload(dataDir, input)
-  const result = db.prepare('INSERT INTO person_photos (person_id, kind, path) VALUES (?, ?, ?)').run(personId, kind, rel)
-  syncPrimary(db, personId, kind)
-  return { id: Number(result.lastInsertRowid), person_id: personId, kind, path: rel }
+  // Checked again with the insert: another upload may have taken the last place while this one was being processed.
+  db.exec('BEGIN')
+  try {
+    checkRoom()
+    const result = db.prepare('INSERT INTO person_photos (person_id, kind, path) VALUES (?, ?, ?)').run(personId, kind, rel)
+    syncPrimary(db, personId, kind)
+    db.exec('COMMIT')
+    return { id: Number(result.lastInsertRowid), person_id: personId, kind, path: rel }
+  } catch (err) {
+    db.exec('ROLLBACK')
+    removeUpload(dataDir, rel)
+    throw err
+  }
 }
 
 /** Detaches one photo and deletes its file. Returns false if it is not this person's. */

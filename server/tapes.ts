@@ -107,8 +107,10 @@ export async function addTape(db: Db, body: unknown, titleLookup = lookupTitle) 
     .get(source.provider, source.kind, source.externalId)
   if (exists) throw new Error('הקלטת הזו כבר על המדף')
   const title = text('title') || (await titleLookup(source)) || 'קלטת בלי שם'
+  // Someone may have added the same tape while the title was being looked up.
   const result = db
-    .prepare('INSERT INTO tapes (provider, kind, external_id, title, added_by) VALUES (?, ?, ?, ?, ?)')
+    .prepare('INSERT INTO tapes (provider, kind, external_id, title, added_by) VALUES (?, ?, ?, ?, ?) ON CONFLICT (provider, kind, external_id) DO NOTHING')
     .run(source.provider, source.kind, source.externalId, title, addedBy)
+  if (result.changes === 0) throw new Error('הקלטת הזו כבר על המדף')
   return serializeTape(db.prepare('SELECT * FROM tapes WHERE id = ?').get(Number(result.lastInsertRowid)) as unknown as TapeRow)
 }
