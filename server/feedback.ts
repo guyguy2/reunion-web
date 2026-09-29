@@ -1,18 +1,21 @@
 import type { Config } from './config.ts'
 import type { Db, FeedbackRow } from './db.ts'
-import { configuredMailer } from './email.ts'
+import { configuredMailer, type Mailer } from './email.ts'
 
 export type SendEmail = (message: { subject: string; text: string; replyTo?: string }) => Promise<void>
 
 const MAX_MESSAGE = 3000
 const EMAIL = /[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+/
 
-/** Emails feedback to the organizers. Returns null when email or a recipient is not set up; feedback is then only saved. */
-export function feedbackSender(config: Config, fetchImpl: typeof fetch = fetch): SendEmail | null {
-  const mail = configuredMailer(config, fetchImpl)
-  const to = config.feedbackTo
+/** Emails feedback to the organizers through `mail`. Returns null when email or a recipient is not set up; feedback is then only saved. */
+export function feedbackSenderFor(mail: Mailer | null, to: string | undefined): SendEmail | null {
   if (!mail || !to) return null
   return (message) => mail({ ...message, to })
+}
+
+/** The same, through the mailer the config sets up. */
+export function feedbackSender(config: Config, fetchImpl: typeof fetch = fetch): SendEmail | null {
+  return feedbackSenderFor(configuredMailer(config, fetchImpl), config.feedbackTo)
 }
 
 export function serializeFeedback(row: FeedbackRow) {

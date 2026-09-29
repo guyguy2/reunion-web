@@ -30,7 +30,7 @@ import { addTape, listTapes } from './tapes.ts'
 import { addVideo, albumVideoEntries, listVideos } from './videos.ts'
 import { addQuote, addQuoteComment, listQuotes, reactToQuote } from './quotes.ts'
 import { listCredits } from './credits.ts'
-import { addFeedback, feedbackSender } from './feedback.ts'
+import { addFeedback, feedbackSenderFor } from './feedback.ts'
 import { configuredMailer, type Mailer } from './email.ts'
 import { redeemSignInLink, sendSignInLink } from './recovery.ts'
 import { deleteNote, emailNoteAlert, listNotes, markNoteRead, sendNote, unreadNotes } from './notes.ts'
@@ -249,7 +249,7 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   })
 
   // Feedback to the organizers: saved, then emailed when email is configured.
-  const sendFeedback = feedbackSender(config)
+  const sendFeedback = feedbackSenderFor(mailer, config.feedbackTo)
   app.post('/api/feedback', async (c) => {
     if (!feedbackPerClient.allow(clientKey(c)) || !feedbackPerDay.allow('all')) return c.json({ error: 'יותר מדי בקשות. נסו שוב מאוחר יותר.' }, 429)
     try {
@@ -340,8 +340,12 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     if (!linksPerClient.allow(clientKey(c)) || !linksPerPerson.allow(String(id))) return c.json({ error: 'יותר מדי בקשות. נסו שוב מאוחר יותר.' }, 429)
     const person = getPerson(db, id)
     if (!person?.claimed_at) return c.json({ error: 'Not found' }, 404)
+    if (!config.publicUrl) {
+      console.error(`Sign-in link for person ${person.id} not sent: PUBLIC_URL is not set, so the link would have no address`)
+      return c.json({ error: 'משהו השתבש' }, 500)
+    }
     try {
-      const sentTo = await sendSignInLink(db, person, mailer, config.publicUrl ?? new URL(c.req.url).origin)
+      const sentTo = await sendSignInLink(db, person, mailer, config.publicUrl)
       return c.json({ sentTo })
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
@@ -399,9 +403,13 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
+    if (!config.publicUrl) {
+      console.error(`Note alert for person ${recipient.id} skipped: PUBLIC_URL is not set, so its links would have no address`)
+      return c.json({ ok: true }, 201)
+    }
     // Not awaited: the note is already delivered, and the Gmail relay can take half a minute.
     const event = loadEvent()
-    emailNoteAlert(db, recipient, mailer, config.publicUrl ?? new URL(c.req.url).origin, event.emailSignature || event.title).catch((err) =>
+    emailNoteAlert(db, recipient, mailer, config.publicUrl, event.emailSignature || event.title).catch((err) =>
       console.error(`Note alert for person ${recipient.id} failed: ${(err as Error).message}`),
     )
     return c.json({ ok: true }, 201)

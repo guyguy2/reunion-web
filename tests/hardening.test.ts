@@ -7,7 +7,7 @@ import { createApp } from '../server/app.ts'
 import { clientKey, createLoginLimiter, createThrottle } from '../server/auth.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
-import type { Mailer } from '../server/email.ts'
+import { gmailRelayMailer, type Mailer } from '../server/email.ts'
 import { insertPerson } from '../server/people.ts'
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-hardening-test-'))
@@ -294,5 +294,82 @@ describe('PIN lockout per profile', () => {
     vi.setSystemTime(Date.now() + 15 * MINUTE + DAY)
     expect((await pinLogin(id, '0000')).status).toBe(401)
     expect((await pinLogin(id, '1357')).status).toBe(200)
+  })
+})
+
+describe('links in emails without a public address', () => {
+  const recoveryLinks = (id: number) => (db.prepare('SELECT COUNT(*) AS n FROM recovery_tokens WHERE person_id = ?').get(id) as { n: number }).n
+
+  it('refuses a sign-in link with the general error and one log line, and sends nothing', async () => {
+    const { app: noUrl, outbox } = mailApp({ publicUrl: undefined })
+    const id = insertPerson(db, { name: 'Jenny Carter', email: 'jenny.c@example.test', claimed_at: 'now' })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await noUrl.request(`/api/people/${id}/signin-link`, { method: 'POST', headers: { Cookie: member, 'x-real-ip': freshIp() } })
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: 'משהו השתבש' })
+    expect(logged).toHaveBeenCalledTimes(1)
+    expect(outbox).toHaveLength(0)
+    expect(recoveryLinks(id)).toBe(0)
+  })
+
+  it('delivers a note but skips its email alert, with one log line', async () => {
+    const { app: noUrl, outbox } = mailApp({ publicUrl: undefined })
+    const id = insertPerson(db, { name: 'Pen Pal', email: 'penpal@example.test' })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await noUrl.request('/api/notes', json('POST', { to: id, message: 'See you there', anonymous: true }, { Cookie: member }))
+    expect(res.status).toBe(201)
+    expect(db.prepare('SELECT COUNT(*) AS n FROM notes WHERE recipient_id = ?').get(id)).toEqual({ n: 1 })
+    expect(outbox).toHaveLength(0)
+    expect(logged).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('feedback email', () => {
+  it('goes out through the mailer the app was given', async () => {
+    const { app: withMail, outbox } = mailApp({ feedbackTo: 'organizers@example.test' })
+    const res = await withMail.request(
+      '/api/feedback',
+      json('POST', { message: 'Love the wall', sender: 'Jenny <jenny@example.test>' }, { Cookie: member, 'x-real-ip': freshIp() }),
+    )
+    expect(res.status).toBe(201)
+    expect(await res.json()).toMatchObject({ emailed: true })
+    expect(outbox).toEqual([
+      expect.objectContaining({ to: 'organizers@example.test', replyTo: 'jenny@example.test', text: expect.stringContaining('Love the wall') }),
+    ])
+  })
+})
+
+describe('sign-in link deadline', () => {
+  it('gives up one minute after it started, however many relay redirects that takes', async () => {
+    const exec = 'https://script.google.com/macros/s/ID/exec'
+    const moved = 'https://script.google.com/macros/u/1/s/ID/exec'
+    // Google moves the POST after 40 seconds, and the moved one never answers. Each request would stop in time on its own.
+    let reached = () => {}
+    const relayReached = new Promise<void>((resolve) => (reached = resolve))
+    const stallingFetch = ((url: string, init: RequestInit = {}) =>
+      new Promise<Response>((resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(init.signal!.reason))
+        if (url !== exec) return
+        reached()
+        setTimeout(() => resolve(new Response(null, { status: 302, headers: { location: moved } })), 40_000)
+      })) as unknown as typeof fetch
+    const relay = gmailRelayMailer({ ...config, gmailRelayUrl: exec, gmailRelaySecret: 'relay-secret' }, stallingFetch)!
+    const slow = createApp(config, db, relay)
+    const id = insertPerson(db, { name: 'Jordan Hale', email: 'jordan.h@example.test', claimed_at: 'now' })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+    let answer: Response | undefined
+    void Promise.resolve(slow.request(`/api/people/${id}/signin-link`, { method: 'POST', headers: { Cookie: member, 'x-real-ip': freshIp() } })).then(
+      (res) => (answer = res),
+    )
+    // The session check runs on real time first; the clock starts once the email is on its way.
+    await relayReached
+    await vi.advanceTimersByTimeAsync(59_000)
+    expect(answer).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(answer?.status).toBe(400)
+    expect(await answer!.json()).toEqual({ error: 'לא הצלחנו לשלוח את המייל. נסו שוב בעוד רגע.' })
+    expect(db.prepare('SELECT COUNT(*) AS n FROM recovery_tokens WHERE person_id = ?').get(id)).toEqual({ n: 0 })
   })
 })

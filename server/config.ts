@@ -15,7 +15,7 @@ export interface Config {
   emailFrom?: string
   gmailRelayUrl?: string
   gmailRelaySecret?: string
-  /** The site's public address, for links in emails. Falls back to the address of the request. */
+  /** The site's public address, for links in emails. Without it, sign-in links are refused and note alerts skipped. */
   publicUrl?: string
   /** Deploy time and commit, set by `pnpm release`. Shown in the principal's office. */
   version?: string

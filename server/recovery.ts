@@ -5,6 +5,8 @@ import type { Mailer } from './email.ts'
 
 export const LINK_MINUTES = 30
 const COOLDOWN_MINUTES = 2
+/** The whole email, relay redirects included, gets this long. */
+const SEND_DEADLINE_MS = 60_000
 
 /** "guy@gmail.com" -> "g***@gmail.com", so the page can say where the link went without showing the address. */
 export function maskEmail(email: string): string {
@@ -27,6 +29,8 @@ export async function sendSignInLink(db: Db, person: PersonRow, mail: Mailer | n
     person.id,
     `+${LINK_MINUTES} minutes`,
   )
+  const deadline = new AbortController()
+  const timer = setTimeout(() => deadline.abort(new DOMException('The email took longer than a minute', 'TimeoutError')), SEND_DEADLINE_MS)
   try {
     await mail({
       to: person.email,
@@ -40,12 +44,15 @@ export async function sendSignInLink(db: Db, person: PersonRow, mail: Mailer | n
         `הקישור עובד פעם אחת בלבד, במשך ${LINK_MINUTES} דקות. אחרי הכניסה אפשר לבחור קוד אישי חדש.`,
         'אם לא ביקשת את זה, אפשר פשוט להתעלם מהמייל.',
       ].join('\n'),
+      signal: deadline.signal,
     })
   } catch (err) {
     // Takes the unsent link back, so the cooldown does not block asking again. The log keeps the reason, never the link.
     db.prepare('DELETE FROM recovery_tokens WHERE token_hash = ?').run(sha256(token))
     console.error(`Sign-in link for person ${person.id} was not emailed: ${String((err as Error).message).replaceAll(token, '[link]')}`)
     throw new Error('לא הצלחנו לשלוח את המייל. נסו שוב בעוד רגע.')
+  } finally {
+    clearTimeout(timer)
   }
   return maskEmail(person.email)
 }

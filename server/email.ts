@@ -1,9 +1,10 @@
 import type { Config } from './config.ts'
 
-/** `text` always goes along; `html`, when given, is the version mail apps show, and `text` the fallback. */
-export type Mailer = (message: { to: string; subject: string; text: string; html?: string; replyTo?: string }) => Promise<void>
+/** `text` always goes along; `html`, when given, is the version mail apps show, and `text` the fallback.
+ * `signal`, when given, is a deadline for the whole send, every request in it together. */
+export type Mailer = (message: { to: string; subject: string; text: string; html?: string; replyTo?: string; signal?: AbortSignal }) => Promise<void>
 
-/** Each request gives up after this long. The Gmail relay can take about half a minute. */
+/** Without a deadline for the whole send, each request gives up after this long. The Gmail relay can take about half a minute. */
 const TIMEOUT_MS = 60_000
 
 /**
@@ -14,12 +15,12 @@ const TIMEOUT_MS = 60_000
 export function resendMailer(config: Config, fetchImpl: typeof fetch = fetch): Mailer | null {
   const { resendApiKey, emailFrom } = config
   if (!resendApiKey) return null
-  return async ({ to, subject, text, html, replyTo }) => {
+  return async ({ to, subject, text, html, replyTo, signal }) => {
     const res = await fetchImpl('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: emailFrom, to: [to], subject, text, ...(html ? { html } : {}), ...(replyTo ? { reply_to: replyTo } : {}) }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: signal ?? AbortSignal.timeout(TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`Resend answered ${res.status}`)
   }
@@ -36,19 +37,19 @@ const RELAY_HOSTS = ['script.google.com', 'script.googleusercontent.com']
 export function gmailRelayMailer(config: Config, fetchImpl: typeof fetch = fetch): Mailer | null {
   const { gmailRelayUrl, gmailRelaySecret } = config
   if (!gmailRelayUrl || !gmailRelaySecret) return null
-  return async ({ to, subject, text, html, replyTo }) => {
+  return async ({ to, subject, text, html, replyTo, signal }) => {
     const body = JSON.stringify({ secret: gmailRelaySecret, to, subject, text, ...(html ? { html } : {}), ...(replyTo ? { replyTo } : {}) })
     // Redirects are followed by hand: fetch would follow them as a GET and drop the message.
     let url = gmailRelayUrl
     for (let hop = 0; ; hop++) {
-      const res = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS) })
+      const res = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, redirect: 'manual', signal: signal ?? AbortSignal.timeout(TIMEOUT_MS) })
       const location = res.headers.get('location')
       if (res.status >= 300 && res.status < 400 && location) {
         // The body carries the secret, so it only ever goes on to Google, over https.
         const next = new URL(location, url)
         if (next.protocol !== 'https:' || !RELAY_HOSTS.includes(next.hostname)) throw new Error(`Gmail relay redirected off Google, to ${next.origin}`)
         // Google points at the script's answer only after the script has run.
-        if (next.hostname === 'script.googleusercontent.com') return readRelayAnswer(fetchImpl, next.href)
+        if (next.hostname === 'script.googleusercontent.com') return readRelayAnswer(fetchImpl, next.href, signal)
         if (hop >= 2) throw new Error('Gmail relay redirected too many times')
         url = next.href
         continue
@@ -63,8 +64,8 @@ export function gmailRelayMailer(config: Config, fetchImpl: typeof fetch = fetch
 
 /** The answer can be read only once, and now and then it is not there at all (a 404). The script has run by then,
  * so an unreadable answer counts as sent: failing would send a note alert twice, or show an error for a sign-in link that arrived. */
-async function readRelayAnswer(fetchImpl: typeof fetch, answerUrl: string) {
-  const res = await fetchImpl(answerUrl, { signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => null)
+async function readRelayAnswer(fetchImpl: typeof fetch, answerUrl: string, signal?: AbortSignal) {
+  const res = await fetchImpl(answerUrl, { signal: signal ?? AbortSignal.timeout(TIMEOUT_MS) }).catch(() => null)
   const result = res?.ok ? ((await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null) : null
   if (!result) {
     console.warn(`Gmail relay ran but its answer could not be read (${res?.status ?? 'no response'}); counting the email as sent`)

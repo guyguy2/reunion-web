@@ -21,6 +21,7 @@ const config: Config = {
   port: 0,
   webDir: path.join(dataDir, 'web'),
   secureCookies: false,
+  publicUrl: 'https://example.test',
 }
 const db = openDb(dataDir)
 const app = createApp(config, db)
