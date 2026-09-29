@@ -32,6 +32,7 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
   // The store has the members' copy of the scene, which leaves out staff faces. The organizers' copy has them,
   // so they are drawn and auto-detect doesn't box them again.
   const [fullScene, setFullScene] = useState<Scene | null>(null)
+  const [sceneFailed, setSceneFailed] = useState(false)
   const scene = fullScene ?? memberScene
   const host = useRef<HTMLDivElement>(null)
   const anno = useRef<OpenSeadragonAnnotator | null>(null)
@@ -58,9 +59,14 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
   // After every change: this scene with its staff faces, and the store, for the people and the counts elsewhere.
   const refresh = () => Promise.all([loadScene(), reload()])
 
-  useEffect(() => {
-    loadScene().catch((err) => setMessage((err as Error).message))
+  // Also the retry after a failed first load.
+  const openScene = useCallback(() => {
+    setSceneFailed(false)
+    loadScene().catch(() => setSceneFailed(true))
   }, [loadScene])
+  useEffect(() => {
+    openScene()
+  }, [openScene])
 
   useEffect(() => {
     const viewer = OpenSeadragon({
@@ -121,12 +127,15 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
 
   async function act(action: () => Promise<unknown>, onError?: () => void) {
     setMessage('')
+    let saved = false
     try {
       await action()
+      saved = true
       await refresh()
     } catch (err) {
       setMessage((err as Error).message)
-      onError?.()
+      // Only a failed save is undone. If just the reload failed, the server kept the change the canvas shows.
+      if (!saved) onError?.()
     }
   }
 
@@ -179,6 +188,14 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
           <button className="btn w-full" disabled={progress !== null || !fullScene} onClick={autoDetect}>
             {progress === null ? 'זיהוי פנים אוטומטי' : `סורק... ${Math.round(progress * 100)}%`}
           </button>
+          {sceneFailed && !fullScene && (
+            <div className="flex items-center gap-2">
+              <p className="flex-1 text-sm font-bold text-pink">לא הצלחנו לטעון את פני הצוות בתמונה, ולכן הזיהוי האוטומטי כבוי.</p>
+              <button className="btn btn-plain btn-sm shrink-0" onClick={openScene}>
+                נסו שוב
+              </button>
+            </div>
+          )}
           <p className="text-xs opacity-70">רץ בדפדפן הזה. מוסיף מסגרת לכל פנים שעדיין אין להן מסגרת. אחר כך הבוגרים מוסיפים שמות.</p>
           <button
             className="btn btn-plain btn-sm w-full"
