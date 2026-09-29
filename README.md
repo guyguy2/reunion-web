@@ -1,8 +1,8 @@
 # Reunion Web
 
-A private website for the Hadassim class of '96 reunion. The site is fully working and runs on Railway. The interface is in Hebrew and laid out right-to-left.
+A private website for a high school class reunion. The site is fully working and runs on Railway. The interface is in Hebrew and laid out right-to-left.
 
-The centerpiece is a zoomable "yearbook": the class composite posters from 1990, 1993 and 1996 as deep-zoom pictures with a clickable box on every face. Classmates find themselves, put a name on a face ("That's me!" or "I know who this is"), claim their profile and fill in what they have been up to. Around it: a 90s cassette-deck mixtape that classmates fill with songs, a video library, a quotes wall, private notes between classmates, the shared photo album, and the event page with an RSVP count.
+The centerpiece is a zoomable "yearbook": the class composite posters from each school year as deep-zoom pictures with a clickable box on every face. Classmates find themselves, put a name on a face ("That's me!" or "I know who this is"), claim their profile and fill in what they have been up to. Around it: a 90s cassette-deck mixtape that classmates fill with songs, a video library, a quotes wall, private notes between classmates, the shared photo album, and the event page with an RSVP count.
 
 ## Screenshots
 
