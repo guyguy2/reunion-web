@@ -81,10 +81,14 @@ export async function rebuildWall(db: Db, dataDir: string) {
     if (face) person.fallback = await cropFace(dataDir, face.tiles_path, face).catch(() => null)
   }
   const { image, boxes } = await buildWall(dataDir, people)
-  const tiled = await tileScene(dataDir, `wall-${Date.now().toString(36)}`, image)
+  // The random part keeps two overlapping rebuilds out of each other's tiles directory.
+  const tiled = await tileScene(dataDir, `wall-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, image)
+  // Re-read the walls here, not before the awaits above: an overlapping rebuild may have replaced them since.
+  let replaced: SceneRow[] = []
   db.exec('BEGIN')
   try {
-    for (const scene of previous) db.prepare('DELETE FROM scenes WHERE id = ?').run(scene.id)
+    replaced = db.prepare(`SELECT * FROM scenes WHERE kind = 'mosaic'`).all() as unknown as SceneRow[]
+    for (const scene of replaced) db.prepare('DELETE FROM scenes WHERE id = ?').run(scene.id)
     const result = db
       .prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path, sort) VALUES ('wall', 'הקיר', 'mosaic', ?, ?, ?, 99)`)
       .run(tiled.width, tiled.height, tiled.tilesPath)
@@ -96,6 +100,6 @@ export async function rebuildWall(db: Db, dataDir: string) {
     removeSceneFiles(dataDir, tiled.tilesPath)
     throw err
   }
-  for (const scene of previous) removeSceneFiles(dataDir, scene.tiles_path)
+  for (const scene of replaced) removeSceneFiles(dataDir, scene.tiles_path)
   return tiled
 }

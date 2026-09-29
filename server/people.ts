@@ -99,8 +99,23 @@ function cleanX(value: string): string {
   return handle
 }
 
+/** "@handle", "instagram.com/handle" or a share link with "?igsh=..." all become the bare handle. */
 function cleanInstagram(value: string): string {
-  return value.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/\/.*$/, '')
+  const handle = value.replace(/^(https?:\/\/)?(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '')
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(handle)) throw new Error('שם המשתמש באינסטגרם לא תקין')
+  return handle
+}
+
+const FLAG_ON = ['1', 'true', 'yes', 'כן']
+const FLAG_OFF = ['0', 'false', 'no', 'לא', '']
+
+/** JSON bodies send booleans or numbers; CSV cells arrive as text, where "0" and "no" must mean off. */
+function parseFlag(raw: unknown, rawKey: string): number {
+  if (typeof raw !== 'string') return raw ? 1 : 0
+  const text = raw.trim().toLowerCase()
+  if (FLAG_ON.includes(text)) return 1
+  if (FLAG_OFF.includes(text)) return 0
+  throw new Error(`ערך לא תקין (${rawKey})`)
 }
 
 /** Validates a JSON body into column -> value pairs. Throws Error with a user-facing message on bad input. */
@@ -110,7 +125,7 @@ export function parsePersonInput(body: unknown, opts: { admin: boolean }): Recor
   for (const [rawKey, raw] of Object.entries(body as Record<string, unknown>)) {
     const key = CAMEL[rawKey] ?? rawKey
     if ((FLAG_FIELDS as readonly string[]).includes(key) || (opts.admin && (ADMIN_FLAG_FIELDS as readonly string[]).includes(key))) {
-      out[key] = raw ? 1 : 0
+      out[key] = parseFlag(raw, rawKey)
       continue
     }
     if (!(EDITABLE_FIELDS as readonly string[]).includes(key)) continue

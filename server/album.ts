@@ -50,6 +50,8 @@ export function parseAlbumPage(html: string): AlbumPhoto[] {
 }
 
 let cache: { url: string; at: number; photos: AlbumPhoto[] } | null = null
+/** Callers that arrive while the album is being fetched wait for that fetch instead of starting their own. */
+const inFlight = new Map<string, Promise<AlbumPhoto[]>>()
 
 /** Photos only: the album's videos go to the video library instead (see albumVideos). */
 export async function albumPhotos(albumUrl: string): Promise<AlbumPhoto[]> {
@@ -63,6 +65,15 @@ export async function albumVideos(albumUrl: string): Promise<AlbumPhoto[]> {
 async function albumItems(albumUrl: string): Promise<AlbumPhoto[]> {
   if (!/^https:\/\/(photos\.google\.com|photos\.app\.goo\.gl)\//.test(albumUrl)) return []
   if (cache && cache.url === albumUrl && Date.now() - cache.at < CACHE_MS) return cache.photos
+  let pending = inFlight.get(albumUrl)
+  if (!pending) {
+    pending = fetchAlbum(albumUrl).finally(() => inFlight.delete(albumUrl))
+    inFlight.set(albumUrl, pending)
+  }
+  return pending
+}
+
+async function fetchAlbum(albumUrl: string): Promise<AlbumPhoto[]> {
   try {
     const res = await fetch(albumUrl, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(15_000) })
     const photos = res.ok ? parseAlbumPage(await res.text()) : []
@@ -71,7 +82,10 @@ async function albumItems(albumUrl: string): Promise<AlbumPhoto[]> {
     else cache.at = Date.now()
   } catch (err) {
     console.error('Album fetch failed:', (err as Error).message)
-    if (!cache || cache.url !== albumUrl) cache = { url: albumUrl, at: Date.now() - CACHE_MS + 60_000, photos: [] }
+    // Try again in a minute, not on every request, and keep serving the last good list meanwhile.
+    const retryAt = Date.now() - CACHE_MS + 60_000
+    if (!cache || cache.url !== albumUrl) cache = { url: albumUrl, at: retryAt, photos: [] }
+    else cache.at = retryAt
   }
   return cache.photos
 }
