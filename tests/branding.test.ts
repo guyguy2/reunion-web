@@ -12,7 +12,7 @@ import { createApp } from '../server/app.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
 import Gate from '../web/src/components/Gate.tsx'
-import Branding from '../web/src/routes/Branding.tsx'
+import Branding, { hasUpload } from '../web/src/routes/Branding.tsx'
 
 // The placeholders are read from the built client, where the build copies web/public. Here web/public stands in for it.
 const WEB_PUBLIC = fileURLToPath(new URL('../web/public', import.meta.url))
@@ -81,6 +81,7 @@ describe('branding pictures', () => {
       expect(res.status, name).toBe(200)
       expect(res.headers.get('content-type'), name).toBe(TYPES[path.extname(name).slice(1)])
       expect(res.headers.get('cache-control'), name).toBe('public, max-age=3600')
+      expect(res.headers.get('x-branding-source'), name).toBe('placeholder')
       expect((await bytes(res)).equals(placeholder(name)), name).toBe(true)
     }
   })
@@ -96,6 +97,7 @@ describe('branding pictures', () => {
     const served = await get('postcard.webp')
     expect(served.status).toBe(200)
     expect(served.headers.get('content-type')).toBe('image/webp')
+    expect(served.headers.get('x-branding-source')).toBe('upload')
     const body = await bytes(served)
     expect(body.equals(placeholder('postcard.webp'))).toBe(false)
     expect(await sharp(body).metadata()).toMatchObject({ format: 'webp', width: 300, height: 300 })
@@ -114,10 +116,34 @@ describe('branding pictures', () => {
     expect(removed.status).toBe(200)
     expect(await removed.json()).toEqual({ ok: true })
     expect(fs.existsSync(override('favicon.png'))).toBe(false)
-    expect((await bytes(await get('favicon.png'))).equals(placeholder('favicon.png'))).toBe(true)
+    const restored = await get('favicon.png')
+    expect(restored.headers.get('x-branding-source')).toBe('placeholder')
+    expect((await bytes(restored)).equals(placeholder('favicon.png'))).toBe(true)
 
     // Removing again, with nothing left to remove, is not an error.
     expect((await remove(admin, 'favicon.png')).status).toBe(200)
+  })
+
+  it('falls back to the placeholder when a folder is where the upload would be, or a file where the uploads folder would be', async () => {
+    fs.mkdirSync(override('favicon.png'), { recursive: true })
+    try {
+      const res = await get('favicon.png')
+      expect(res.status).toBe(200)
+      expect(res.headers.get('x-branding-source')).toBe('placeholder')
+      expect((await bytes(res)).equals(placeholder('favicon.png'))).toBe(true)
+    } finally {
+      fs.rmdirSync(override('favicon.png'))
+    }
+
+    const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-branding-test-'))
+    try {
+      fs.writeFileSync(path.join(otherDir, 'branding'), 'a file, not a folder')
+      const res = await createApp({ ...config, dataDir: otherDir }, db).request('/branding/emblem.png')
+      expect(res.status).toBe(200)
+      expect((await bytes(res)).equals(placeholder('emblem.png'))).toBe(true)
+    } finally {
+      fs.rmSync(otherDir, { recursive: true, force: true })
+    }
   })
 
   it('answers a classmate with 403, and changes nothing', async () => {
@@ -195,8 +221,10 @@ describe('branding pictures', () => {
 
 describe('the client asks for the branding pictures by name', () => {
   it('ships only the placeholders in web/public', () => {
-    expect(fs.readdirSync(WEB_PUBLIC)).toEqual(['branding'])
-    expect(fs.readdirSync(path.join(WEB_PUBLIC, 'branding')).sort()).toEqual([...NAMES].sort())
+    // Dotfiles such as .DS_Store are the local machine's, not part of the repo.
+    const listing = (dir: string) => fs.readdirSync(dir).filter((f) => !f.startsWith('.'))
+    expect(listing(WEB_PUBLIC)).toEqual(['branding'])
+    expect(listing(path.join(WEB_PUBLIC, 'branding')).sort()).toEqual([...NAMES].sort())
   })
 
   it('points the page icons at /branding', () => {
@@ -214,6 +242,22 @@ describe('the client asks for the branding pictures by name', () => {
     const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Branding)))
     for (const name of NAMES) expect(html, name).toMatch(new RegExp(`<img src="/branding/${name.replace('.', '\\.')}\\?v=\\d+"`))
     expect(html.match(/type="file"/g)).toHaveLength(NAMES.length)
-    expect(html.match(/>הסרה</g)).toHaveLength(NAMES.length)
+    // Until the page has asked the server which pictures are uploads, there is nothing it knows it can remove.
+    expect(html.match(/<button[^>]* disabled=""[^>]*>הסרה</g)).toHaveLength(NAMES.length)
+  })
+
+  it('tells an upload from a placeholder by asking the server', async () => {
+    const server = async (url: string, init: RequestInit) => app.request(url, init)
+    expect((await upload(admin, 'emblem.png', await noisyImage('png', 40, 40))).status).toBe(200)
+    expect((await remove(admin, 'favicon.png')).status).toBe(200)
+    expect(await hasUpload('emblem.png', 1, server)).toBe(true)
+    expect(await hasUpload('favicon.png', 1, server)).toBe(false)
+
+    const asked: [string, RequestInit][] = []
+    await hasUpload('postcard.webp', 42, async (url, init) => (asked.push([url, init]), new Response(null)))
+    expect(asked).toEqual([['/branding/postcard.webp?v=42', { method: 'HEAD' }]])
+
+    // When the check itself fails, removing stays possible: with nothing to remove it does no harm.
+    expect(await hasUpload('favicon.png', 1, () => Promise.reject(new TypeError('Failed to fetch')))).toBe(true)
   })
 })

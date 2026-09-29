@@ -28,19 +28,27 @@ const isName = (name: string | undefined): name is Name => name !== undefined &&
 
 const uploadsDir = (config: Config) => path.join(config.dataDir, 'branding')
 
-/** The organizers' upload if there is one, else the placeholder. Null when neither is there. */
-function readPicture(config: Config, name: Name): Buffer | null {
-  for (const dir of [uploadsDir(config), path.join(config.webDir, 'branding')]) {
+// A folder where the file would be, or a file where the folder would be, counts as no file.
+const MISSING = new Set(['ENOENT', 'EISDIR', 'ENOTDIR'])
+
+/** The organizers' upload if there is one, else the placeholder, and which of the two it is. Null when neither is there. */
+function readPicture(config: Config, name: Name): { data: Buffer; source: 'upload' | 'placeholder' } | null {
+  const places = [
+    { dir: uploadsDir(config), source: 'upload' as const },
+    { dir: path.join(config.webDir, 'branding'), source: 'placeholder' as const },
+  ]
+  for (const { dir, source } of places) {
     try {
-      return fs.readFileSync(path.join(dir, name))
+      return { data: fs.readFileSync(path.join(dir, name)), source }
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      if (!MISSING.has((err as NodeJS.ErrnoException).code ?? '')) throw err
     }
   }
   return null
 }
 
-/** GET /branding/:name. No session needed: the postcard and the favicon show on the passcode screen. */
+/** GET /branding/:name. No session needed: the postcard and the favicon show on the passcode screen. The
+ * X-Branding-Source header says whether it is an upload, so the admin page knows what there is to remove. */
 export function brandingRoutes(config: Config): Hono {
   const app = new Hono()
   app.get('/:name', (c) => {
@@ -48,7 +56,11 @@ export function brandingRoutes(config: Config): Hono {
     if (!isName(name)) return c.notFound()
     const picture = readPicture(config, name)
     if (!picture) return c.notFound()
-    return c.body(new Uint8Array(picture), 200, { 'Content-Type': PICTURES[name].type, 'Cache-Control': 'public, max-age=3600' })
+    return c.body(new Uint8Array(picture.data), 200, {
+      'Content-Type': PICTURES[name].type,
+      'Cache-Control': 'public, max-age=3600',
+      'X-Branding-Source': picture.source,
+    })
   })
   app.all('*', (c) => c.notFound())
   return app

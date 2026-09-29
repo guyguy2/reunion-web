@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.ts'
 import { oneAtATime } from '../adminOnce.ts'
@@ -12,6 +12,17 @@ const PICTURES = [
 ] as const
 
 type Notice = { name: string; text: string; error?: boolean }
+
+/** Whether the server has an organizer's upload for this name, from the header it sends with the picture. When the
+ * check itself fails the answer is yes, so removing stays possible: with nothing to remove it does no harm. */
+export async function hasUpload(name: string, version: number, fetcher: (url: string, init: RequestInit) => Promise<Response> = fetch) {
+  try {
+    const res = await fetcher(`/branding/${name}?v=${version}`, { method: 'HEAD' })
+    return res.headers.get('x-branding-source') !== 'placeholder'
+  } catch {
+    return true
+  }
+}
 
 /** Asks twice, inline, like the other destructive buttons on the admin pages. */
 function RemoveButton({ disabled, onConfirm }: { disabled: boolean; onConfirm: () => void }) {
@@ -38,17 +49,24 @@ export default function Branding() {
   // Each address carries a version, so this page shows what the server has now rather than what the browser cached.
   const [loadedAt] = useState(() => Date.now())
   const [versions, setVersions] = useState<Record<string, number>>({})
+  // Which names have an upload to remove. None until the server has answered.
+  const [uploaded, setUploaded] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState<Notice | null>(null)
   const [once] = useState(() => oneAtATime(() => {}))
 
-  function act(name: string, action: () => Promise<unknown>, done: string) {
+  useEffect(() => {
+    for (const { name } of PICTURES) hasUpload(name, loadedAt).then((yes) => setUploaded((u) => ({ ...u, [name]: yes })))
+  }, [loadedAt])
+
+  function act(name: string, action: () => Promise<unknown>, done: string, isUpload: boolean) {
     return once(async () => {
       setBusy(name)
       setNotice(null)
       try {
         await action()
         setVersions((v) => ({ ...v, [name]: Date.now() }))
+        setUploaded((u) => ({ ...u, [name]: isUpload }))
         setNotice({ name, text: done })
       } catch (err) {
         setNotice({ name, text: (err as Error).message, error: true })
@@ -92,13 +110,13 @@ export default function Branding() {
                     if (!file) return
                     const body = new FormData()
                     body.set('file', file)
-                    act(name, () => api(`/api/admin/branding/${name}`, { body }), 'התמונה הוחלפה.')
+                    act(name, () => api(`/api/admin/branding/${name}`, { body }), 'התמונה הוחלפה.', true)
                   }}
                 />
               </label>
               <RemoveButton
-                disabled={busy !== ''}
-                onConfirm={() => act(name, () => api(`/api/admin/branding/${name}`, { method: 'DELETE' }), 'הוסרה. מוצגת שוב התמונה הזמנית.')}
+                disabled={busy !== '' || !uploaded[name]}
+                onConfirm={() => act(name, () => api(`/api/admin/branding/${name}`, { method: 'DELETE' }), 'הוסרה. מוצגת שוב התמונה הזמנית.', false)}
               />
             </div>
             {notice?.name === name && (
