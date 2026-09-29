@@ -3,6 +3,9 @@ import type { Config } from './config.ts'
 /** `text` always goes along; `html`, when given, is the version mail apps show, and `text` the fallback. */
 export type Mailer = (message: { to: string; subject: string; text: string; html?: string; replyTo?: string }) => Promise<void>
 
+/** Each request gives up after this long. The Gmail relay can take about half a minute. */
+const TIMEOUT_MS = 60_000
+
 /**
  * Sends email through Resend's HTTP API, or returns null when no API key is set.
  * Resend's test sender (onboarding@resend.dev) only delivers to the Resend account's own address;
@@ -16,10 +19,14 @@ export function resendMailer(config: Config, fetchImpl: typeof fetch = fetch): M
       method: 'POST',
       headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: emailFrom, to: [to], subject, text, ...(html ? { html } : {}), ...(replyTo ? { reply_to: replyTo } : {}) }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`Resend answered ${res.status}`)
   }
 }
+
+/** Where Google sends the relay's POST on (script.google.com) and where the script's answer waits (script.googleusercontent.com). */
+const RELAY_HOSTS = ['script.google.com', 'script.googleusercontent.com']
 
 /**
  * Sends email from a Gmail account through a Google Apps Script web app (scripts/gmail-relay.gs), or returns null
@@ -34,13 +41,16 @@ export function gmailRelayMailer(config: Config, fetchImpl: typeof fetch = fetch
     // Redirects are followed by hand: fetch would follow them as a GET and drop the message.
     let url = gmailRelayUrl
     for (let hop = 0; ; hop++) {
-      const res = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, redirect: 'manual' })
+      const res = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS) })
       const location = res.headers.get('location')
       if (res.status >= 300 && res.status < 400 && location) {
+        // The body carries the secret, so it only ever goes on to Google, over https.
+        const next = new URL(location, url)
+        if (next.protocol !== 'https:' || !RELAY_HOSTS.includes(next.hostname)) throw new Error(`Gmail relay redirected off Google, to ${next.origin}`)
         // Google points at the script's answer only after the script has run.
-        if (new URL(location).hostname === 'script.googleusercontent.com') return readRelayAnswer(fetchImpl, location)
+        if (next.hostname === 'script.googleusercontent.com') return readRelayAnswer(fetchImpl, next.href)
         if (hop >= 2) throw new Error('Gmail relay redirected too many times')
-        url = location
+        url = next.href
         continue
       }
       // Apps Script answers 200 even when the script fails, so the verdict is in the body.
@@ -54,7 +64,7 @@ export function gmailRelayMailer(config: Config, fetchImpl: typeof fetch = fetch
 /** The answer can be read only once, and now and then it is not there at all (a 404). The script has run by then,
  * so an unreadable answer counts as sent: failing would send a note alert twice, or show an error for a sign-in link that arrived. */
 async function readRelayAnswer(fetchImpl: typeof fetch, answerUrl: string) {
-  const res = await fetchImpl(answerUrl).catch(() => null)
+  const res = await fetchImpl(answerUrl, { signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => null)
   const result = res?.ok ? ((await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null) : null
   if (!result) {
     console.warn(`Gmail relay ran but its answer could not be read (${res?.status ?? 'no response'}); counting the email as sent`)

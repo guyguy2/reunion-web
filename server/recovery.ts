@@ -27,19 +27,26 @@ export async function sendSignInLink(db: Db, person: PersonRow, mail: Mailer | n
     person.id,
     `+${LINK_MINUTES} minutes`,
   )
-  await mail({
-    to: person.email,
-    subject: 'קישור כניסה לפרופיל שלך באתר המחזור',
-    text: [
-      `שלום ${person.name},`,
-      '',
-      'ביקשת להיכנס לפרופיל שלך. זה הקישור:',
-      `${baseUrl}/signin/${token}`,
-      '',
-      `הקישור עובד פעם אחת בלבד, במשך ${LINK_MINUTES} דקות. אחרי הכניסה אפשר לבחור קוד אישי חדש.`,
-      'אם לא ביקשת את זה, אפשר פשוט להתעלם מהמייל.',
-    ].join('\n'),
-  })
+  try {
+    await mail({
+      to: person.email,
+      subject: 'קישור כניסה לפרופיל שלך באתר המחזור',
+      text: [
+        `שלום ${person.name},`,
+        '',
+        'ביקשת להיכנס לפרופיל שלך. זה הקישור:',
+        `${baseUrl}/signin/${token}`,
+        '',
+        `הקישור עובד פעם אחת בלבד, במשך ${LINK_MINUTES} דקות. אחרי הכניסה אפשר לבחור קוד אישי חדש.`,
+        'אם לא ביקשת את זה, אפשר פשוט להתעלם מהמייל.',
+      ].join('\n'),
+    })
+  } catch (err) {
+    // Takes the unsent link back, so the cooldown does not block asking again. The log keeps the reason, never the link.
+    db.prepare('DELETE FROM recovery_tokens WHERE token_hash = ?').run(sha256(token))
+    console.error(`Sign-in link for person ${person.id} was not emailed: ${String((err as Error).message).replaceAll(token, '[link]')}`)
+    throw new Error('לא הצלחנו לשלוח את המייל. נסו שוב בעוד רגע.')
+  }
   return maskEmail(person.email)
 }
 

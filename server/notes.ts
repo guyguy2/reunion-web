@@ -103,6 +103,13 @@ export async function emailNoteAlert(db: Db, recipient: PersonRow, mail: Mailer 
   try {
     await mail({ to: recipient.email, ...noteAlertEmail(baseUrl, signature) })
   } catch (err) {
+    // A request that ran out of time may have sent the email anyway (the relay can finish after we stop waiting),
+    // so it keeps the slot rather than risk a second email.
+    const name = (err as Error | null)?.name
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      console.warn(`Note alert for person ${recipient.id} timed out; counting it as sent`)
+      return
+    }
     // Gives the slot back, so the next note tries again.
     db.prepare('DELETE FROM note_alerts WHERE person_id = ?').run(recipient.id)
     console.error(`Note alert for person ${recipient.id} was not emailed: ${(err as Error).message}`)
