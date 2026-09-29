@@ -193,3 +193,45 @@ describe('credits', () => {
     expect((await put(member, { credits: [] })).status).toBe(403)
   })
 })
+
+describe('clearing the unnamed faces of a picture', () => {
+  it('keeps the staff faces and their captions', async () => {
+    const scene = Number(
+      db.prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path) VALUES ('staff-room', 'Staff room', 'group', 600, 400, 'scenes/staff-room')`).run().lastInsertRowid,
+    )
+    const person = insertPerson(db, { name: 'Named Face' })
+    const tag = (personId: number | null, staff: number, caption: string | null) =>
+      Number(db.prepare('INSERT INTO tags (scene_id, person_id, x, y, w, h, is_staff, caption) VALUES (?, ?, 1, 1, 10, 10, ?, ?)').run(scene, personId, staff, caption).lastInsertRowid)
+    const named = tag(person, 0, null)
+    tag(null, 0, 'ד. פלוני')
+    const staff = tag(null, 1, 'המנהלת')
+
+    const res = await app.request(`/api/admin/scenes/${scene}/unidentified-tags`, { method: 'DELETE', headers: { Cookie: admin } })
+    expect(await res.json()).toEqual({ removed: 1 })
+    expect(db.prepare('SELECT id, caption, is_staff FROM tags WHERE scene_id = ? ORDER BY id').all(scene)).toEqual([
+      { id: named, caption: null, is_staff: 0 },
+      { id: staff, caption: 'המנהלת', is_staff: 1 },
+    ])
+  })
+})
+
+describe('CSV import', () => {
+  const upload = async (csv: string) =>
+    (await (await app.request('/api/admin/import-csv', { method: 'POST', headers: { Cookie: admin }, body: csv })).json()) as { added: number; skipped: string[] }
+  const count = () => (db.prepare('SELECT COUNT(*) AS n FROM people').get() as { n: number }).n
+
+  it('skips people who are already on the list, so uploading the same file twice adds nobody twice', async () => {
+    const csv = 'name,city\nMaya Katz,Haifa\nאורי לוי,תל אביב\n'
+    expect(await upload(csv)).toEqual({ added: 2, skipped: [] })
+    const before = count()
+
+    const again = await upload(csv)
+    expect(again).toEqual({ added: 0, skipped: [expect.stringContaining('שורה 2'), expect.stringContaining('שורה 3')] })
+    expect(again.skipped[0]).toContain('Maya Katz')
+    expect(count()).toBe(before)
+
+    // Case and spacing do not make it someone new.
+    expect(await upload('name\n  maya KATZ \n')).toEqual({ added: 0, skipped: [expect.stringContaining('שורה 2')] })
+    expect(count()).toBe(before)
+  })
+})

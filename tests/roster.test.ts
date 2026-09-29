@@ -1,11 +1,12 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import sharp from 'sharp'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from '../server/app.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
-import { getPerson, insertPerson } from '../server/people.ts'
+import { addPhoto, getPerson, insertPerson } from '../server/people.ts'
 import { exportRoster, importRoster, type RosterFile } from '../server/roster.ts'
 import { insertTag, titleYear } from '../server/scenes.ts'
 
@@ -40,6 +41,9 @@ function addScene(title: string, width = 1000): number {
 }
 
 const tagRow = (id: number) => db.prepare('SELECT * FROM tags WHERE id = ?').get(id) as Record<string, unknown>
+const peopleCount = () => (db.prepare('SELECT COUNT(*) AS n FROM people').get() as { n: number }).n
+const picture = () => sharp({ create: { width: 60, height: 60, channels: 3, background: '#ec4899' } }).png().toBuffer()
+const onDisk = (rel: string) => fs.existsSync(path.join(dataDir, rel))
 const json = (cookie: string, body: unknown, method = 'POST') => ({
   method,
   headers: { Cookie: cookie, 'Content-Type': 'application/json' },
@@ -94,7 +98,8 @@ beforeAll(async () => {
   kid93 = insertTag(db, scene93, { x: 100, y: 100, w: 50, h: 60 }, null)
   kid96 = insertTag(db, scene96, { x: 300, y: 300, w: 50, h: 60 }, null)
   teacher = insertTag(db, scene96, { x: 500, y: 100, w: 50, h: 60 }, null)
-  alreadyHere = insertPerson(db, { name: 'Named By A Classmate', claimed_at: '2026-09-18T00:00:00Z' })
+  // A poster-style name, so only the claim keeps the file from renaming it.
+  alreadyHere = insertPerson(db, { name: 'ס. אחר', claimed_at: '2026-09-18T00:00:00Z' })
   named = insertTag(db, scene96, { x: 700, y: 100, w: 50, h: 60 }, alreadyHere)
 })
 
@@ -131,7 +136,7 @@ describe('roster import', () => {
 
   it('keeps a name a classmate already gave, and never renames a claimed profile', () => {
     expect(tagRow(named)).toMatchObject({ person_id: alreadyHere, class_label: 'י"ב-1' })
-    expect(getPerson(db, alreadyHere)).toMatchObject({ name: 'Named By A Classmate', gender: 'm' })
+    expect(getPerson(db, alreadyHere)).toMatchObject({ name: 'ס. אחר', gender: 'm' })
   })
 
   it('never replaces a name somebody typed with a poster caption, but a corrected caption does replace a caption', () => {
@@ -163,6 +168,81 @@ describe('roster import', () => {
     expect(getPerson(db, caption)!.name).toBe('דנה פלוני')
     db.prepare('DELETE FROM tags WHERE id IN (?, ?)').run(a, b)
     db.prepare('DELETE FROM people WHERE id IN (?, ?)').run(typed, caption)
+  })
+
+  it('keeps a name a classmate gave even when the file marks that face as staff', () => {
+    const me = insertPerson(db, { name: 'Tamar Said That Is Me', claimed_at: '2026-09-20T00:00:00Z' })
+    const face = insertTag(db, scene93, { x: 100, y: 700, w: 50, h: 60 }, me)
+    const result = importRoster(db, {
+      version: 1,
+      people: [],
+      scenes: [
+        {
+          title: '1993 - junior high',
+          year: 1993,
+          width: 1000,
+          height: 800,
+          faces: [{ x: 100, y: 700, w: 50, h: 60, caption: 'The Gym Teacher', classLabel: null, staff: true, person: null }],
+        },
+      ],
+    })
+    expect(result).toMatchObject({ facesMatched: 1, namesKept: 1 })
+    expect(tagRow(face)).toMatchObject({ person_id: me, is_staff: 0 })
+    db.prepare('DELETE FROM tags WHERE id = ?').run(face)
+    db.prepare('DELETE FROM people WHERE id = ?').run(me)
+  })
+
+  it('leaves a caption and class typed here alone when the file has none', () => {
+    const kid = insertTag(db, scene93, { x: 300, y: 700, w: 50, h: 60 }, null)
+    const staff = insertTag(db, scene93, { x: 500, y: 700, w: 50, h: 60 }, null)
+    db.prepare('UPDATE tags SET caption = ?, class_label = ? WHERE id = ?').run('ר. מקומי', 'י"ב-4', kid)
+    db.prepare('UPDATE tags SET caption = ?, is_staff = 1 WHERE id = ?').run('המורה לספורט', staff)
+    importRoster(db, {
+      version: 1,
+      people: [],
+      scenes: [
+        {
+          title: '1993 - junior high',
+          year: 1993,
+          width: 1000,
+          height: 800,
+          faces: [
+            { x: 300, y: 700, w: 50, h: 60, caption: null, classLabel: null, staff: false, person: null },
+            { x: 500, y: 700, w: 50, h: 60, caption: null, classLabel: null, staff: true, person: null },
+          ],
+        },
+      ],
+    })
+    expect(tagRow(kid)).toMatchObject({ caption: 'ר. מקומי', class_label: 'י"ב-4' })
+    expect(tagRow(staff)).toMatchObject({ caption: 'המורה לספורט', is_staff: 1 })
+    db.prepare('DELETE FROM tags WHERE id IN (?, ?)').run(kid, staff)
+  })
+
+  it('never gives one face here to two pictures in the file', () => {
+    const face = insertTag(db, scene96, { x: 100, y: 600, w: 50, h: 60 }, null)
+    const before = peopleCount()
+    // Neither title is on this site, so both would fall back to its one 1996 picture.
+    const shot = (title: string, person: string) => ({
+      title,
+      year: 1996,
+      width: 1000,
+      height: 800,
+      faces: [{ x: 100, y: 600, w: 50, h: 60, caption: null, classLabel: null, staff: false, person }],
+    })
+    const result = importRoster(db, {
+      version: 1,
+      people: [
+        { key: 'x', name: 'א. ראשון', gender: null },
+        { key: 'y', name: 'ב. שני', gender: null },
+      ],
+      scenes: [shot('1996 - trip', 'x'), shot('1996 - party', 'y')],
+    })
+    expect(result).toMatchObject({ facesMatched: 1, facesUnmatched: 1, peopleAdded: 1 })
+    expect(peopleCount()).toBe(before + 1)
+    const added = tagRow(face).person_id as number
+    expect(getPerson(db, added)!.name).toBe('א. ראשון')
+    db.prepare('DELETE FROM tags WHERE id = ?').run(face)
+    db.prepare('DELETE FROM people WHERE id = ?').run(added)
   })
 
   it('can be run again without adding anyone twice', () => {
@@ -214,6 +294,15 @@ describe('staff faces', () => {
     expect(tagRow(face)).toMatchObject({ is_staff: 0, person_id: person.id })
   })
 
+  it('marking someone as staff deletes their photo files too', async () => {
+    const id = insertPerson(db, { name: 'Ms. Photographed Teacher' })
+    const photo = await addPhoto(db, dataDir, id, 'now', await picture())
+    expect(onDisk(photo.path)).toBe(true)
+    expect((await app.request(`/api/admin/people/${id}/staff`, { method: 'POST', headers: { Cookie: admin } })).status).toBe(200)
+    expect(getPerson(db, id)).toBeUndefined()
+    expect(onDisk(photo.path)).toBe(false)
+  })
+
   it('a claimed profile cannot be marked as staff', async () => {
     expect((await app.request(`/api/admin/people/${alreadyHere}/staff`, { method: 'POST', headers: { Cookie: admin } })).status).toBe(400)
   })
@@ -226,14 +315,44 @@ describe('fixing the roster', () => {
     expect(await res.json()).toMatchObject({ caption: 'י. ישראלי', classLabel: "ט'-5", staff: false })
   })
 
-  it('merges two profiles of one person, moving the faces and keeping the gender', async () => {
-    const into = tagRow(kid93).person_id as number
-    const from = insertPerson(db, { name: 'י. ישראלית', gender: 'f' })
+  it('merges two profiles of one person, moving the faces, the notes and the gender', async () => {
+    const into = insertPerson(db, { name: 'Yoav Levi' })
+    const from = insertPerson(db, { name: 'י. לוי', gender: 'm' })
     const face = insertTag(db, scene93, { x: 800, y: 600, w: 50, h: 60 }, from)
+    const note = Number(db.prepare('INSERT INTO notes (recipient_id, message) VALUES (?, ?)').run(from, 'For Yoav').lastInsertRowid)
     const res = await app.request(`/api/admin/people/${from}/merge`, json(admin, { intoId: into }))
     expect(res.status).toBe(200)
     expect(getPerson(db, from)).toBeUndefined()
     expect(tagRow(face).person_id).toBe(into)
+    expect(getPerson(db, into)!.gender).toBe('m')
+    expect(db.prepare('SELECT recipient_id FROM notes WHERE id = ?').get(note)).toEqual({ recipient_id: into })
+  })
+
+  it('a merge keeps the photos of both profiles, up to the limit, and deletes the files of the ones left over', async () => {
+    const into = insertPerson(db, { name: 'Noa Barak' })
+    const from = insertPerson(db, { name: 'נ. ברק' })
+    const [intoThen1, intoThen2] = [await addPhoto(db, dataDir, into, 'then', await picture()), await addPhoto(db, dataDir, into, 'then', await picture())]
+    const [fromThen1, fromThen2] = [await addPhoto(db, dataDir, from, 'then', await picture()), await addPhoto(db, dataDir, from, 'then', await picture())]
+    const fromNow = await addPhoto(db, dataDir, from, 'now', await picture())
+
+    expect((await app.request(`/api/admin/people/${from}/merge`, json(admin, { intoId: into }))).status).toBe(200)
+    const merged = getPerson(db, into)!
+    const paths = (kind: 'then' | 'now') => merged.photos!.filter((p) => p.kind === kind).map((p) => p.path)
+    // Three "then" photos at most: both of Noa's and the first of the other profile's.
+    expect(paths('then')).toEqual([intoThen1.path, intoThen2.path, fromThen1.path])
+    expect(paths('now')).toEqual([fromNow.path])
+    expect(merged).toMatchObject({ then_photo: intoThen1.path, now_photo: fromNow.path })
+    expect([intoThen1, intoThen2, fromThen1, fromNow].every((p) => onDisk(p.path))).toBe(true)
+    expect(onDisk(fromThen2.path)).toBe(false)
+  })
+
+  it('a merge fills in details the kept profile lacks, and keeps hidden ones hidden', async () => {
+    const into = insertPerson(db, { name: 'Gal Mor', former_name: 'Gal Shani' })
+    const from = insertPerson(db, { name: 'ג. מור', former_name: 'Gal Other', nickname: 'Gali', email: 'gal@example.com', show_email: 0, phone: '050-1234567' })
+    expect((await app.request(`/api/admin/people/${from}/merge`, json(admin, { intoId: into }))).status).toBe(200)
+    expect(getPerson(db, into)).toMatchObject({ former_name: 'Gal Shani', nickname: 'Gali', email: 'gal@example.com', show_email: 0, phone: '050-1234567' })
+    const everyone = (await (await app.request('/api/people', { headers: { Cookie: member } })).json()) as { id: number; email: string | null; phone: string | null }[]
+    expect(everyone.find((p) => p.id === into)).toMatchObject({ email: null, phone: '050-1234567' })
   })
 
   it('never merges a claimed profile away', async () => {

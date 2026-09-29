@@ -66,7 +66,7 @@ export function adminRoutes(config: Config, db: Db) {
     const into = getPerson(db, Number(body.intoId))
     if (!from || !into) return c.json({ error: 'Not found' }, 404)
     try {
-      mergePeople(db, from, into)
+      mergePeople(db, config.dataDir, from, into)
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
@@ -78,7 +78,7 @@ export function adminRoutes(config: Config, db: Db) {
     const person = getPerson(db, Number(c.req.param('id')))
     if (!person) return c.json({ error: 'Not found' }, 404)
     try {
-      markPersonStaff(db, person)
+      markPersonStaff(db, config.dataDir, person)
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
@@ -110,10 +110,13 @@ export function adminRoutes(config: Config, db: Db) {
     const rows = parseCsv(await c.req.text())
     let added = 0
     const skipped: string[] = []
+    // Someone already on the list is left alone, so uploading the same file again adds nobody twice.
+    const existing = new Set((db.prepare('SELECT name FROM people').all() as { name: string }[]).map((p) => p.name.trim().toLowerCase()))
     for (const [i, row] of rows.entries()) {
       try {
         const fields = parsePersonInput(row, { admin: true })
         if (!fields.name) throw new Error('חובה למלא שם')
+        if (existing.has(String(fields.name).toLowerCase())) throw new Error(`${fields.name} כבר ברשימה`)
         insertPerson(db, fields)
         added++
       } catch (err) {
@@ -179,7 +182,7 @@ export function adminRoutes(config: Config, db: Db) {
 
   // Clears the faces nobody has named yet, e.g. before re-running detection.
   admin.delete('/scenes/:id/unidentified-tags', (c) => {
-    const result = db.prepare('DELETE FROM tags WHERE scene_id = ? AND person_id IS NULL').run(Number(c.req.param('id')))
+    const result = db.prepare('DELETE FROM tags WHERE scene_id = ? AND person_id IS NULL AND is_staff = 0').run(Number(c.req.param('id')))
     return c.json({ removed: Number(result.changes) })
   })
 

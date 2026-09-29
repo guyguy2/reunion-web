@@ -1,5 +1,5 @@
 import type { Db, PersonRow, SceneRow, TagRow } from './db.ts'
-import { getPerson, insertPerson, updatePerson } from './people.ts'
+import { deletePhoto, deletePhotos, getPerson, insertPerson, listPhotos, MAX_PHOTOS_PER_KIND, updatePerson } from './people.ts'
 
 /**
  * The names, classes and genders worked out for the class photos, as one file. It is how a roster that was
@@ -90,13 +90,20 @@ export function importRoster(db: Db, file: RosterFile): ImportResult {
   const result: ImportResult = { facesMatched: 0, facesUnmatched: 0, peopleAdded: 0, peopleUpdated: 0, namesKept: 0 }
   const local = groupScenes(db)
   const matches: { tag: TagRow; face: RosterFile['scenes'][number]['faces'][number] }[] = []
+  // A face here is matched at most once, and a picture here that the file already has is not taken again by
+  // year: two pictures from one year must not both write to the same faces.
+  const usedTags = new Set<number>()
+  const matchedScenes = new Set(local.filter((s) => file.scenes.some((source) => source.title === s.title)).map((s) => s.id))
 
   for (const source of file.scenes) {
-    const scene = local.find((s) => s.title === source.title) ?? (source.year == null ? undefined : local.find((s) => s.year === source.year))
+    const scene =
+      local.find((s) => s.title === source.title) ??
+      (source.year == null ? undefined : local.find((s) => s.year === source.year && !matchedScenes.has(s.id)))
     if (!scene) {
       result.facesUnmatched += source.faces.length
       continue
     }
+    matchedScenes.add(scene.id)
     const scale = scene.width / source.width
     const tags = db.prepare('SELECT * FROM tags WHERE scene_id = ?').all(scene.id) as unknown as TagRow[]
     const pairs = source.faces.flatMap((face) => {
@@ -105,7 +112,6 @@ export function importRoster(db: Db, file: RosterFile): ImportResult {
     })
     pairs.sort((a, b) => b.score - a.score)
     const usedFaces = new Set<unknown>()
-    const usedTags = new Set<number>()
     for (const pair of pairs) {
       if (usedFaces.has(pair.face) || usedTags.has(pair.tag.id)) continue
       usedFaces.add(pair.face)
@@ -135,11 +141,14 @@ export function importRoster(db: Db, file: RosterFile): ImportResult {
       if (Object.keys(fields).length) (updatePerson(db, id, fields), result.peopleUpdated++)
     }
 
-    const update = db.prepare('UPDATE tags SET caption = ?, class_label = ?, is_staff = ?, person_id = ? WHERE id = ?')
+    // A caption or class the file does not have leaves the one typed here alone.
+    const update = db.prepare('UPDATE tags SET caption = COALESCE(?, caption), class_label = COALESCE(?, class_label), is_staff = ?, person_id = ? WHERE id = ?')
     for (const { tag, face } of matches) {
       let personId = tag.person_id
-      if (face.staff) personId = null
-      else if (personId != null) result.namesKept++
+      let staff = face.staff ? 1 : 0
+      // A name given here wins over the file, even over a staff mark.
+      if (personId != null) (result.namesKept++, (staff = tag.is_staff))
+      else if (face.staff) personId = null
       else if (face.person && people.has(face.person)) {
         if (!personFor.has(face.person)) {
           const incoming = people.get(face.person)!
@@ -148,7 +157,7 @@ export function importRoster(db: Db, file: RosterFile): ImportResult {
         }
         personId = personFor.get(face.person)!
       }
-      update.run(face.caption?.trim() || null, face.classLabel?.trim() || null, face.staff ? 1 : 0, personId, tag.id)
+      update.run(face.caption?.trim() || null, face.classLabel?.trim() || null, staff, personId, tag.id)
     }
     db.exec('COMMIT')
   } catch (err) {
@@ -158,15 +167,52 @@ export function importRoster(db: Db, file: RosterFile): ImportResult {
   return result
 }
 
-/** Folds one unclaimed profile into another: the same person read two ways on two posters. */
-export function mergePeople(db: Db, from: PersonRow, into: PersonRow) {
+/** Details the kept profile takes from the merged one when it has none of its own, each with the flag that hides it. */
+const MERGED_FIELDS = [
+  ['former_name', null],
+  ['nickname', null],
+  ['email', 'show_email'],
+  ['phone', 'show_phone'],
+  ['instagram', 'show_instagram'],
+  ['linkedin', 'show_linkedin'],
+  ['facebook', 'show_facebook'],
+  ['x', 'show_x'],
+  ['website', 'show_website'],
+] as const
+
+/**
+ * Folds one unclaimed profile into another: the same person read two ways on two posters. The kept profile's
+ * own photos stay first; the other one's fill any free places up to the limit, and the files of the rest are deleted.
+ */
+export function mergePeople(db: Db, dataDir: string, from: PersonRow, into: PersonRow) {
   if (from.id === into.id) throw new Error('Cannot merge a profile into itself')
   if (from.claimed_at) throw new Error('A claimed profile cannot be merged away. Merge the other one into it.')
   db.exec('BEGIN')
   try {
     db.prepare('UPDATE tags SET person_id = ? WHERE person_id = ?').run(into.id, from.id)
     db.prepare('UPDATE notes SET recipient_id = ? WHERE recipient_id = ?').run(into.id, from.id)
-    if (!into.gender && from.gender) updatePerson(db, into.id, { gender: from.gender })
+    const fields: Record<string, string | number | null> = {}
+    if (!into.gender && from.gender) fields.gender = from.gender
+    for (const [field, flag] of MERGED_FIELDS) {
+      if (into[field] || !from[field]) continue
+      fields[field] = from[field]
+      if (flag) fields[flag] = from[flag]
+    }
+    updatePerson(db, into.id, fields)
+    for (const kind of ['then', 'now'] as const) {
+      const room = MAX_PHOTOS_PER_KIND - listPhotos(db, into.id, kind).length
+      for (const [i, photo] of listPhotos(db, from.id, kind).entries()) {
+        // A new row sorts after the kept profile's own photos. The old row goes with the merged profile.
+        if (i < room) {
+          db.prepare('INSERT INTO person_photos (person_id, kind, path, created_at) SELECT ?, kind, path, created_at FROM person_photos WHERE id = ?')
+            .run(into.id, photo.id)
+        } else deletePhoto(db, dataDir, from.id, photo.id)
+      }
+      // The mirror people.ts keeps for the portrait wall: the oldest photo of each kind.
+      const column = kind === 'then' ? 'then_photo' : 'now_photo'
+      db.prepare(`UPDATE people SET ${column} = (SELECT path FROM person_photos WHERE person_id = ? AND kind = ? ORDER BY id LIMIT 1) WHERE id = ?`)
+        .run(into.id, kind, into.id)
+    }
     db.prepare('DELETE FROM people WHERE id = ?').run(from.id)
     db.exec('COMMIT')
   } catch (err) {
@@ -176,7 +222,7 @@ export function mergePeople(db: Db, from: PersonRow, into: PersonRow) {
 }
 
 /** Marks someone as staff: their faces are hidden and keep the name as a caption, and the unclaimed profile goes. */
-export function markPersonStaff(db: Db, person: PersonRow) {
+export function markPersonStaff(db: Db, dataDir: string, person: PersonRow) {
   if (person.claimed_at) throw new Error('A claimed profile cannot be marked as staff')
   db.exec('BEGIN')
   try {
@@ -184,6 +230,7 @@ export function markPersonStaff(db: Db, person: PersonRow) {
       `UPDATE tags SET is_staff = 1, caption = COALESCE(caption, ?), person_id = NULL
        WHERE person_id = ? AND scene_id IN (SELECT id FROM scenes WHERE kind = 'group')`,
     ).run(person.name, person.id)
+    deletePhotos(db, dataDir, person.id)
     db.prepare('DELETE FROM people WHERE id = ?').run(person.id)
     db.exec('COMMIT')
   } catch (err) {
