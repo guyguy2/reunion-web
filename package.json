@@ -38,7 +38,7 @@
     "@annotorious/openseadragon": "^3.8.10",
     "@mediapipe/tasks-vision": "^1.0.1",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/node": "^26.6.1",
+    "@types/node": "^24.19.0",
     "@types/openseadragon": "^6.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
