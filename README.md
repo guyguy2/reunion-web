@@ -25,27 +25,27 @@ Taken with the built-in demo data (generated cartoon classmates, not real people
 
 ## Features
 
-- **Passcode gate.** One shared class passcode, checked on the server and rate limited. Nothing (API, pictures, uploads) is served without it, except the old school postcard on the passcode screen. A separate admin passcode unlocks the organizer tools. Every response is `noindex`.
+- **Passcode gate.** One shared class passcode, checked on the server. After 10 wrong tries in 15 minutes, an address has to wait. Nothing (API, pictures, uploads) is served without it, except the old school postcard on the passcode screen. A separate admin passcode unlocks the organizer tools, with its own count of wrong tries. A session lasts 90 days, and changing a passcode signs out everyone who logged in with it. Every response is `noindex`.
 - **Yearbook viewer.** OpenSeadragon deep zoom, one tab per picture plus a generated portrait wall of everyone, search that flies to a person, a deep link per person (`/p/:id`), a "through the years" strip cropped from each poster, and a then/now slider. Phones get a grid of portrait tiles instead, so nobody downloads the big posters on mobile data.
 - **Find friends.** Search by name and slice the yearbook by the year of the class photo, by class, and by boys or girls, sorted by name or grouped by class. The filters live in the address, so a slice can be shared. It is the phone yearbook, and on bigger screens it sits next to the class photos at `/friends`.
 - **Welcome.** Once the site knows who you are, it says hello (good morning, good evening), shows where your RSVP stands and how many days are left. Once per visit.
 - **Crowd-sourced names.** Unnamed faces can be named by any classmate, either as an existing person or as a new, unclaimed profile. A profile owner can take their name off a wrongly tagged face ("That's not me"); organizers can do the same for anyone.
-- **Profiles.** Claim your face or add yourself if you are not on the roster. Fill in a nickname, city, bio, a favorite quote, contact links (email, phone, Instagram, LinkedIn, Facebook, X, website), then and now photos, and whether you are coming. "Remove my info" wipes everything except the name and releases the profile.
-- **Signing in.** Claiming returns a private edit link; only its hash is stored. A personal code (salted scrypt) signs you in on another phone or computer, and each device gets its own key. Forgot the code? A one-time sign-in link is emailed to the address on the profile (valid for 30 minutes). Wrong codes are rate limited per device and per profile.
+- **Profiles.** Claim your face or add yourself if you are not on the roster. Fill in a nickname, city, bio, a favorite quote, contact links (email, phone, Instagram, LinkedIn, Facebook, X, website), then and now photos, and whether you are coming. "Remove my info" deletes what the owner filled in (details, contact links, RSVP, the former name and the "now" photos) and the notes waiting for them, signs out every device and releases the profile. The name, the "then" photos and the face tags stay.
+- **Signing in.** Claiming returns a private edit link; only its hash is stored. A personal code (salted scrypt) signs you in on another phone or computer, and each device gets its own key. Forgot the code? A one-time sign-in link is emailed to the address on the profile (valid for 30 minutes). Wrong codes are limited per address (10 in 15 minutes) and per profile: after 10 wrong codes the profile is locked for 15 minutes, each wrong code after that locks it twice as long as the last time, up to a day, and the right code starts it over. Sign-in links are limited to 10 requests per address in 10 minutes, 5 emails a day per profile and 100 a day for the whole site.
 - **Notes.** Pass a private note to one classmate, signed or anonymous. Anonymous notes store no sender at all, so nobody (admins included) can tell who wrote them. Only the recipient can read or delete a note, and unread notes show as a badge on the profile button. When email is set up, the recipient also gets an email that a note is waiting (never who wrote it or what it says), at most once every 12 hours.
 - **Mixtape.** A persistent player dressed as a cassette deck. Any classmate can add a tape: YouTube or YouTube Music videos and playlists, or Spotify tracks, albums, playlists and `spotify:` links. Titles are fetched automatically. It keeps playing across pages, moves to the next tape when one ends, and pauses when a video starts.
 - **Videos.** Classmates paste YouTube, Instagram, Facebook or X links; each plays in place on click. Organizers' picks from the event details come first.
 - **Quotes wall ("Who said it?").** Things teachers and classmates used to say. Anyone can add a quote (who said it and when are optional), comment on any quote, and react to it with an emoji. Reactions work like a chat app: a small counter per emoji, one reaction per person, and picking yours again takes it back. No profile needed; a visitor without one is counted by a random key their browser keeps.
 - **Memories.** Photos from the shared Google Photos album, shown as a grid with a full-screen viewer. Google has no API for shared albums, so the server reads the album page itself (cached for 30 minutes) and falls back to a plain link if that stops working.
 - **Event.** Countdown, RSVP buttons, time and place, schedule and how many people have said they are coming, all from the event details (see Configuration). Until you answer, a yellow RSVP button sits in the header (in the middle of the bottom bar on phones); after that it turns into a countdown.
-- **Feedback button.** Messages to the organizers are saved first, then emailed when email is set up.
+- **Feedback button.** Messages to the organizers are saved first, then emailed when email is set up. An address can post 10 times in 10 minutes. After 50 emails in a day, messages are only saved, and the feedback inbox still shows them.
 - **Admin ("Principal's Office").**
   - Overview: roster size, claimed profiles, RSVPs, faces named, notes sent (counts only), tapes, videos, quotes, visits.
   - Pictures: upload (auto-tiled), auto-detect faces in the browser (MediaPipe), draw, move and delete boxes (Annotorious), assign names, rebuild the portrait wall.
   - People: add and edit, CSV roster import, reset a claim.
   - Class roster: the names printed under the faces (an initial and a surname) become unclaimed profiles, matched across the posters. A one-by-one review fixes a name and marks boy or girl with one tap or key; other views merge possible duplicates, name the faces that could not be read, and hide staff. Staff faces stay in the database but never reach the yearbook, the search or the counts. The reviewed roster downloads as one JSON file and uploads on another copy of the site, where faces are matched by picture and position and names people already gave are kept: only a name that is itself a poster caption is ever replaced.
   - Moderation: remove any tape, video, quote or comment, and read the feedback inbox.
-  - Data: load demo data into an empty site, download a JSON backup of every profile, picture and face tag (no image files, sign-in secrets or notes).
+  - Data: load demo data into an empty site, download a JSON backup of every profile, picture, face tag, profile photo record, quote (with its comments and reactions), tape, video and credit (no image files, sign-in secrets, notes or who reacted).
 
 ## Stack
 
@@ -69,6 +69,8 @@ pnpm seed               # optional: fake classmates and pictures into an empty .
 pnpm roster:import f.json   # optional: apply a roster file (same as uploading it on the admin page)
 pnpm test
 pnpm typecheck
+pnpm build              # client into dist/web, server into dist/server (what the Dockerfile runs)
+pnpm start              # runs the build as production does; reads the environment, not .env
 ```
 
 Real class photos are uploaded through the admin page and stored in `DATA_DIR`. They are never committed.
@@ -79,7 +81,7 @@ Real class photos are uploaded through the admin page and stored in `DATA_DIR`. 
 | --- | --- |
 | `CLASS_PASSCODE` | Shared passcode for classmates |
 | `ADMIN_PASSCODE` | Organizer passcode |
-| `SESSION_SECRET` | Signs the session cookie. Long and random |
+| `SESSION_SECRET` | Signs the session cookie. Long and random. Changing it signs everyone out |
 | `DATA_DIR` | Where the database, tiles and uploads live (`/data` in production) |
 | `PORT` | Server port (default `3000`) |
 | `GOOGLE_PHOTOS_ALBUM_URL` | Full shared album link. Kept out of git because the link itself grants access |
@@ -89,8 +91,8 @@ Real class photos are uploaded through the admin page and stored in `DATA_DIR`. 
 | `EMAIL_FROM` | Sender address. Resend's default test sender only delivers to your own Resend account, so classmates need a verified domain |
 | `FEEDBACK_TO` | Where feedback messages are emailed |
 | `GMAIL_RELAY_URL` | Without Resend: the web app URL of `scripts/gmail-relay.gs` deployed in the Gmail account to send from (setup steps are in the file). Railway blocks SMTP on its cheaper plans; this goes over HTTPS |
-| `GMAIL_RELAY_SECRET` | A long random string, the same as `SECRET` in the deployed script |
-| `PUBLIC_URL` | The site's address, for links in emails. Defaults to the Railway domain, then to the request's address |
+| `GMAIL_RELAY_SECRET` | A long random string, the same as the `SECRET` script property of the deployed script (Project Settings > Script Properties in Apps Script; the code holds no secret) |
+| `PUBLIC_URL` | The site's address, for links in emails. Defaults to the Railway domain (`RAILWAY_PUBLIC_DOMAIN`, which Railway sets). With neither, sign-in links are refused and note emails are skipped; the request's own address is never used |
 | `APP_VERSION` | Set by `pnpm release`: the deploy time and commit, shown in the principal's office |
 
 Event details, schedule, the house mixtape, the organizers' video list and the line that signs the note emails (`emailSignature`) come from `EVENT_JSON`. They stay out of git so the repo doesn't publish the date, venue or schedule; `content/event.json` holds placeholder values that show the expected shape. In a local `.env`, wrap the JSON in single quotes and it can span several lines.
@@ -107,7 +109,9 @@ railway up
 railway domain
 ```
 
-After that, deploy with `pnpm release`. It stamps `APP_VERSION` with the time and commit, then runs `railway up`. Pushing to GitHub does not deploy.
+After that, deploy with `pnpm release`. It runs the typecheck, the tests and the build, and refuses to go on while the working tree has uncommitted or untracked files (`railway up` uploads the working tree, but `APP_VERSION` names the last commit). Then it stamps `APP_VERSION` with the time and commit and runs `railway up`. Pushing to GitHub does not deploy.
+
+The limits on wrong passcodes and codes, sign-in links and feedback count per client address, taken from `X-Real-IP`, which Railway's edge proxy sets (the last `X-Forwarded-For` hop is only a fallback for a proxy that does not). They are kept in memory, which suits the single instance the site runs as; a deploy starts them over.
 
 After a deploy, click through [docs/manual-tests.md](docs/manual-tests.md).
 
