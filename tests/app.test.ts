@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import sharp from 'sharp'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../server/app.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
@@ -25,6 +25,13 @@ const config: Config = {
 }
 const db = openDb(dataDir)
 const app = createApp(config, db)
+
+// A built client in webDir, so every test here runs against a real index.html, as in production.
+const INDEX_HTML = '<!doctype html><title>Reunion</title><div id="root"></div>'
+const APP_JS = 'console.log("reunion")'
+fs.mkdirSync(path.join(config.webDir, 'assets'), { recursive: true })
+fs.writeFileSync(path.join(config.webDir, 'index.html'), INDEX_HTML)
+fs.writeFileSync(path.join(config.webDir, 'assets', 'index-abc123.js'), APP_JS)
 
 async function login(passcode: string, ip = '10.0.0.1'): Promise<string> {
   const res = await app.request('/api/login', {
@@ -85,21 +92,66 @@ describe('passcode gate', () => {
   })
 
   it('does not serve files outside the media folders', async () => {
-    for (const url of ['/media/reunion.db', '/media/uploads/..%2Freunion.db', '/media/scenes/../../etc/passwd']) {
+    // The database sits next to the media folders, so any way out of one reaches it. A plain "../" never gets here:
+    // the URL parser resolves it before the app sees the path, so only an encoded slash can try.
+    expect(fs.existsSync(path.join(dataDir, 'reunion.db'))).toBe(true)
+    const viaParent = `..%2F..%2F${path.basename(dataDir)}%2Freunion.db`
+    for (const url of ['/media/reunion.db', '/media/uploads/..%2Freunion.db', '/media/scenes/..%2Freunion.db', `/media/uploads/${viaParent}`]) {
       expect((await app.request(url, { headers: { Cookie: member } })).status, url).toBe(404)
     }
+  })
+})
+
+describe('built client', () => {
+  it('serves index.html for the home page and every page address, never cached', async () => {
+    for (const url of ['/', '/p/12', '/friends?year=1996', '/signin/some-token', '/nothing-here.png']) {
+      const res = await app.request(url)
+      expect(res.status, url).toBe(200)
+      expect(res.headers.get('content-type'), url).toBe('text/html; charset=utf-8')
+      expect(res.headers.get('cache-control'), url).toBe('no-cache')
+      expect(await res.text(), url).toBe(INDEX_HTML)
+    }
+  })
+
+  it('serves built files with a long cache', async () => {
+    const res = await app.request('/assets/index-abc123.js')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('text/javascript; charset=utf-8')
+    expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
+    expect(await res.text()).toBe(APP_JS)
+  })
+
+  it('does not serve files outside the built client, even to a visitor without the passcode', async () => {
+    // The client folder sits inside the data folder, one level below the database.
+    expect(fs.existsSync(path.join(config.webDir, '..', 'reunion.db'))).toBe(true)
+    for (const url of ['/..%2Freunion.db', '/assets/..%2F..%2Freunion.db']) {
+      expect((await app.request(url)).status, url).toBe(404)
+    }
+  })
+
+  it('answers an address that is not valid percent-encoding with 404', async () => {
+    expect((await app.request('/%E0%A4%A')).status).toBe(404)
+  })
+
+  it('answers an unknown API address with JSON, not the page', async () => {
+    const res = await app.request('/api/nothing-here', { headers: { Cookie: member } })
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Not found' })
   })
 })
 
 describe('event details', () => {
   it('shows the placeholder from content/event.json unless EVENT_JSON is set', async () => {
     const title = async () => ((await (await app.request('/api/event', { headers: { Cookie: member } })).json()) as { title: string }).title
-    expect(await title()).toBe('Class Reunion')
-    process.env.EVENT_JSON = JSON.stringify({ title: 'The real reunion', music: {}, memories: {} })
+    const previous = process.env.EVENT_JSON
+    delete process.env.EVENT_JSON
     try {
+      expect(await title()).toBe('Class Reunion')
+      process.env.EVENT_JSON = JSON.stringify({ title: 'The real reunion', music: {}, memories: {} })
       expect(await title()).toBe('The real reunion')
     } finally {
-      delete process.env.EVENT_JSON
+      if (previous === undefined) delete process.env.EVENT_JSON
+      else process.env.EVENT_JSON = previous
     }
   })
 })
@@ -110,7 +162,35 @@ describe('profiles', () => {
     const people = await res.json()
     const jenny = people.find((p: { id: number }) => p.id === personId)
     expect(jenny.email).toBeNull()
-    expect(JSON.stringify(people)).not.toContain('token')
+
+    // A profile holding every kind of secret: the edit token from creating it, a code, and a device key from signing in with the code.
+    const created = await app.request('/api/people', json('POST', { name: 'Secret Keeper', pin: '2468' }, { Cookie: member }))
+    const { token, person } = await created.json()
+    const signedIn = await app.request(`/api/people/${person.id}/login`, json('POST', { pin: '2468' }, { Cookie: member, 'x-real-ip': '10.0.0.4' }))
+    const { token: device } = await signedIn.json()
+    const { edit_token_hash: editHash, pin_hash: pinHash } = db.prepare('SELECT edit_token_hash, pin_hash FROM people WHERE id = ?').get(person.id) as {
+      edit_token_hash: string
+      pin_hash: string
+    }
+    const { token_hash: deviceHash } = db.prepare('SELECT token_hash FROM device_tokens WHERE person_id = ?').get(person.id) as { token_hash: string }
+    expect(editHash).toMatch(/^[0-9a-f]{64}$/)
+    expect(deviceHash).toMatch(/^[0-9a-f]{64}$/)
+    expect(pinHash).toMatch(/^[0-9a-f]{32}:[0-9a-f]{64}$/)
+    const secrets = [editHash, deviceHash, pinHash, ...pinHash.split(':')]
+
+    const asOwner = (key: string) => ({ headers: { Cookie: member, 'x-edit-token': key } })
+    const reads: [string, () => Response | Promise<Response>][] = [
+      ['people for classmates', () => app.request('/api/people', { headers: { Cookie: member } })],
+      ['people for organizers', () => app.request('/api/people', { headers: { Cookie: admin } })],
+      ['own profile by edit token', () => app.request('/api/me', asOwner(token))],
+      ['own profile by device key', () => app.request('/api/me', asOwner(device))],
+    ]
+    for (const [what, read] of reads) {
+      const res = await read()
+      expect(res.status, what).toBe(200)
+      const text = await res.text()
+      for (const secret of secrets) expect(text, what).not.toContain(secret)
+    }
   })
 
   it('lets one person claim a profile, then edit only with the token', async () => {
@@ -705,27 +785,35 @@ describe('notes', () => {
 
     expect((await app.request('/api/notes', json('POST', { to: recipient.id, message: 'Signed hello' }, asSender))).status).toBe(201)
     expect((await app.request('/api/notes', json('POST', { to: recipient.id, message: 'Guess who', anonymous: true }, { Cookie: member }))).status).toBe(201)
+    // Anonymous stays anonymous when the sender is signed in to their own profile.
+    expect((await app.request('/api/notes', json('POST', { to: recipient.id, message: 'Not telling', anonymous: true }, asSender))).status).toBe(201)
     // Signing needs a profile; writing to yourself or with nothing to say is refused.
     expect((await app.request('/api/notes', json('POST', { to: recipient.id, message: 'Hi' }, { Cookie: member }))).status).toBe(400)
     expect((await app.request('/api/notes', json('POST', { to: sender.id, message: 'Me' }, asSender))).status).toBe(400)
     expect((await app.request('/api/notes', json('POST', { to: recipient.id, message: '  ' }, asSender))).status).toBe(400)
 
-    expect((await (await app.request('/api/me', { headers: asRecipient })).json()).unreadNotes).toBe(2)
+    expect((await (await app.request('/api/me', { headers: asRecipient })).json()).unreadNotes).toBe(3)
     const notes = await (await app.request('/api/me/notes', { headers: asRecipient })).json()
     expect(notes).toMatchObject([
+      { message: 'Not telling', from: null, read: false },
       { message: 'Guess who', from: null, read: false },
       { message: 'Signed hello', from: { id: sender.id, name: 'Note Sender' }, read: false },
     ])
     expect(JSON.stringify(await (await app.request('/api/me/notes', { headers: asSender })).json())).not.toContain('hello')
 
-    const [anon, signed] = notes
-    // The anonymous note keeps no trace of who sent it.
-    expect({ ...db.prepare('SELECT sender_id, sender_name FROM notes WHERE id = ?').get(anon.id) }).toEqual({ sender_id: null, sender_name: null })
+    const [signedInAnon, anon, signed] = notes
+    // Neither anonymous note keeps a trace of who sent it.
+    for (const note of [signedInAnon, anon]) {
+      expect({ ...db.prepare('SELECT sender_id, sender_name FROM notes WHERE id = ?').get(note.id) }, note.message).toEqual({ sender_id: null, sender_name: null })
+    }
     expect((await app.request(`/api/me/notes/${signed.id}/read`, { method: 'POST', headers: asSender })).status).toBe(404)
     expect((await app.request(`/api/me/notes/${signed.id}`, { method: 'DELETE', headers: asSender })).status).toBe(404)
     expect((await app.request(`/api/me/notes/${signed.id}/read`, { method: 'POST', headers: asRecipient })).status).toBe(200)
     expect((await app.request(`/api/me/notes/${anon.id}`, { method: 'DELETE', headers: asRecipient })).status).toBe(200)
-    expect(await (await app.request('/api/me/notes', { headers: asRecipient })).json()).toMatchObject([{ id: signed.id, read: true }])
+    expect(await (await app.request('/api/me/notes', { headers: asRecipient })).json()).toMatchObject([
+      { id: signedInAnon.id, read: false },
+      { id: signed.id, read: true },
+    ])
   })
 
   it('emails the recipient that a note is waiting, without who wrote it or what it says, at most once per cooldown', async () => {
@@ -743,7 +831,8 @@ describe('notes', () => {
       mailApp.request('/api/notes', json('POST', { to, message, anonymous }, headers))
 
     expect((await pass(penPal, 'Remember the trip to the lake?')).status).toBe(201)
-    expect(outbox).toHaveLength(1)
+    // The route answers without waiting for the email, so the test waits for it.
+    await vi.waitFor(() => expect(outbox).toHaveLength(1))
     expect(outbox[0]).toMatchObject({ to: 'penpal@example.com', subject: expect.stringContaining('פתק') })
     // Both versions link to the profile (where the note is) and the RSVP, and sign off with the event config's line.
     for (const body of [outbox[0].text, outbox[0].html!]) {
@@ -768,9 +857,12 @@ describe('notes', () => {
     db.prepare("UPDATE note_alerts SET sent_at = datetime('now', '-1 day') WHERE person_id = ?").run(penPal)
     emailDown = true
     expect((await pass(penPal, 'Sent while email was down')).status).toBe(201)
+    // The failed email gives its slot back; the next note can only retry after that.
+    const alertSlots = () => db.prepare('SELECT COUNT(*) AS n FROM note_alerts WHERE person_id = ?').get(penPal)
+    await vi.waitFor(() => expect(alertSlots()).toEqual({ n: 0 }))
     emailDown = false
     await pass(penPal, 'And again')
-    expect(outbox.map((m) => m.to)).toEqual(['penpal@example.com', 'penpal@example.com'])
+    await vi.waitFor(() => expect(outbox.map((m) => m.to)).toEqual(['penpal@example.com', 'penpal@example.com']))
     expect(db.prepare('SELECT COUNT(*) AS n FROM notes WHERE recipient_id = ?').get(penPal)).toEqual({ n: 5 })
   })
 })
@@ -786,8 +878,10 @@ describe('personal code sign-in', () => {
     const set = await app.request('/api/me/pin', json('PUT', { pin: ' 123456 ' }, asDesktop))
     expect(await set.json()).toMatchObject({ hasPin: true })
 
+    const { pin_hash: pinHash } = db.prepare('SELECT pin_hash FROM people WHERE id = ?').get(person.id) as { pin_hash: string }
+    expect(pinHash).toMatch(/^[0-9a-f]{32}:[0-9a-f]{64}$/)
     const people = await (await app.request('/api/people', { headers: { Cookie: member } })).text()
-    expect(people).not.toContain('pin_hash')
+    for (const secret of [pinHash, ...pinHash.split(':')]) expect(people).not.toContain(secret)
     expect(JSON.parse(people).find((p: { id: number }) => p.id === person.id)).toMatchObject({ hasPin: true })
 
     const login = (pin: string, ip: string) => app.request(`/api/people/${person.id}/login`, json('POST', { pin }, { Cookie: member, 'x-real-ip': ip }))
@@ -803,6 +897,24 @@ describe('personal code sign-in', () => {
     await app.request(`/api/admin/people/${person.id}/reset-claim`, { method: 'POST', headers: { Cookie: admin } })
     expect((await app.request('/api/me', { headers: { Cookie: member, 'x-edit-token': phone } })).status).toBe(403)
     expect((await login('123456', '10.7.0.3')).status).toBe(400)
+  })
+
+  it('signs out every device and deletes the notes waiting when the owner removes their info', async () => {
+    const created = await app.request('/api/people', json('POST', { name: 'Leaving Soon', pin: '8642' }, { Cookie: member }))
+    const { token: desktop, person } = await created.json()
+    const login = (ip: string) => app.request(`/api/people/${person.id}/login`, json('POST', { pin: '8642' }, { Cookie: member, 'x-real-ip': ip }))
+    const { token: phone } = await (await login('10.7.1.1')).json()
+    expect((await app.request('/api/notes', json('POST', { to: person.id, message: 'Miss you', anonymous: true }, { Cookie: member }))).status).toBe(201)
+    const me = (key: string) => app.request('/api/me', { headers: { Cookie: member, 'x-edit-token': key } })
+    expect((await (await me(phone)).json()).unreadNotes).toBe(1)
+
+    expect((await app.request('/api/me', { method: 'DELETE', headers: { Cookie: member, 'x-edit-token': desktop } })).status).toBe(200)
+    expect((await me(phone)).status).toBe(403)
+    expect((await me(desktop)).status).toBe(403)
+    expect(db.prepare('SELECT COUNT(*) AS n FROM device_tokens WHERE person_id = ?').get(person.id)).toEqual({ n: 0 })
+    expect(db.prepare('SELECT COUNT(*) AS n FROM notes WHERE recipient_id = ?').get(person.id)).toEqual({ n: 0 })
+    // The code is gone too, so it cannot sign in a new device.
+    expect((await login('10.7.1.2')).status).toBe(400)
   })
 
   it('stops guessing a profile code after 10 wrong tries, even from different addresses', async () => {

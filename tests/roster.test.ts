@@ -303,12 +303,16 @@ describe('roster import', () => {
   })
 
   it('can be run again without adding anyone twice', () => {
-    const before = (db.prepare('SELECT COUNT(*) AS n FROM people').get() as { n: number }).n
-    expect(importRoster(db, roster)).toMatchObject({ peopleAdded: 0, namesKept: 3 })
-    expect((db.prepare('SELECT COUNT(*) AS n FROM people').get() as { n: number }).n).toBe(before)
+    importRoster(db, roster)
+    const before = peopleCount()
+    // Every face the file names now has that name here, so each one is kept.
+    const namedFaces = roster.scenes.flatMap((s) => s.faces).filter((f) => f.person && !f.staff).length
+    expect(importRoster(db, roster)).toMatchObject({ peopleAdded: 0, namesKept: namedFaces })
+    expect(peopleCount()).toBe(before)
   })
 
   it('exports what it imported', () => {
+    importRoster(db, roster)
     const file = exportRoster(db)
     expect(file.scenes.map((s) => s.year)).toEqual([1993, 1996])
     const israeli = file.people.find((p) => p.name === 'י. ישראלי')!
@@ -332,8 +336,14 @@ describe('staff faces', () => {
   })
 
   it('are not counted as faces waiting for a name', async () => {
-    const stats = (await (await app.request('/api/admin/stats', { headers: { Cookie: admin } })).json()) as { faces: number; facesNamed: number }
-    expect(stats).toMatchObject({ faces: 3, facesNamed: 3 })
+    const stats = async () => (await (await app.request('/api/admin/stats', { headers: { Cookie: admin } })).json()) as { faces: number; facesNamed: number }
+    const before = await stats()
+    const staff = insertTag(db, scene96, { x: 900, y: 10, w: 50, h: 60 }, null)
+    db.prepare('UPDATE tags SET is_staff = 1 WHERE id = ?').run(staff)
+    const unnamed = insertTag(db, scene96, { x: 900, y: 200, w: 50, h: 60 }, null)
+    // Only the classmate's face is one more waiting for a name.
+    expect(await stats()).toMatchObject({ faces: before.faces + 1, facesNamed: before.facesNamed })
+    db.prepare('DELETE FROM tags WHERE id IN (?, ?)').run(staff, unnamed)
   })
 
   it('a teacher who got a profile can be marked as staff: the faces are hidden and the profile goes', async () => {

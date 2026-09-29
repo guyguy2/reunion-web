@@ -1,11 +1,13 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import sharp from 'sharp'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from '../server/app.ts'
 import type { Config } from '../server/config.ts'
 import { openDb } from '../server/db.ts'
-import { insertPerson } from '../server/people.ts'
+import { addPhoto, getPerson, insertPerson } from '../server/people.ts'
+import { getScene, insertTag } from '../server/scenes.ts'
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reunion-admin-test-'))
 const config: Config = {
@@ -57,27 +59,41 @@ describe('admin overview', () => {
     expect((await app.request('/api/admin/stats', { headers: { Cookie: member } })).status).toBe(403)
   })
 
-  it('counts people, notes and feedback without revealing what the notes say', async () => {
-    const dana = insertPerson(db, { name: 'Dana', attending: 'yes', claimed_at: '2026-09-18T00:00:00Z' })
+  it('counts people, faces, notes, feedback and visits without revealing what the notes say', async () => {
+    const stats = async () => {
+      const res = await app.request('/api/admin/stats', { headers: { Cookie: admin } })
+      expect(res.status).toBe(200)
+      return res.text()
+    }
+    // Counted against what was there before, so the numbers do not depend on the tests that ran first.
+    const before = JSON.parse(await stats())
+    const dana = insertPerson(db, { name: 'Dana', attending: 'yes', claimed_at: '2026-09-18T00:00:00Z', pin_hash: 'pin-salt:pin-hash' })
     insertPerson(db, { name: 'Noa', attending: 'maybe', in_memoriam: 1 })
     db.prepare('INSERT INTO notes (recipient_id, message) VALUES (?, ?)').run(dana, 'A secret only Dana should read')
     db.prepare('INSERT INTO feedback (message) VALUES (?)').run('Great site')
+    // A class photo with a named face, an unnamed one and a hidden staff face, and the portrait wall, which is not counted.
+    const scene = (slug: string, kind: string) =>
+      Number(db.prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path) VALUES (?, ?, ?, 600, 400, ?)`).run(slug, slug, kind, `scenes/${slug}`).lastInsertRowid)
+    const group = scene('stats-group', 'group')
+    insertTag(db, group, { x: 1, y: 1, w: 10, h: 10 }, dana)
+    insertTag(db, group, { x: 20, y: 1, w: 10, h: 10 }, null)
+    db.prepare('UPDATE tags SET is_staff = 1 WHERE id = ?').run(insertTag(db, group, { x: 40, y: 1, w: 10, h: 10 }, null))
+    insertTag(db, scene('stats-wall', 'mosaic'), { x: 1, y: 1, w: 10, h: 10 }, dana)
+    await login('class-pass')
 
-    const res = await app.request('/api/admin/stats', { headers: { Cookie: admin } })
-    expect(res.status).toBe(200)
-    const text = await res.text()
+    const text = await stats()
     expect(JSON.parse(text)).toMatchObject({
-      people: 2,
-      claimed: 1,
-      withPin: 0,
-      inMemoriam: 1,
-      attending: { yes: 1, maybe: 1, no: 0 },
-      faces: 0,
-      facesNamed: 0,
-      notes: 1,
-      notesUnread: 1,
-      feedback: 1,
-      visits: 2,
+      people: before.people + 2,
+      claimed: before.claimed + 1,
+      withPin: before.withPin + 1,
+      inMemoriam: before.inMemoriam + 1,
+      attending: { yes: before.attending.yes + 1, maybe: before.attending.maybe + 1, no: before.attending.no },
+      faces: before.faces + 2,
+      facesNamed: before.facesNamed + 1,
+      notes: before.notes + 1,
+      notesUnread: before.notesUnread + 1,
+      feedback: before.feedback + 1,
+      visits: before.visits + 1,
     })
     expect(text).not.toContain('secret')
   })
@@ -102,9 +118,12 @@ describe('backup export', () => {
     const text = await res.text()
     const backup = JSON.parse(text)
     expect(backup.people.find((p: { id: number }) => p.id === owner)).toMatchObject({ name: 'Backup Owner', email: 'owner@example.com' })
-    expect(backup.people.length).toBe((db.prepare('SELECT COUNT(*) AS n FROM people').get() as { n: number }).n)
-    expect(backup.scenes).toEqual([expect.objectContaining({ id: scene, title: 'Prom', kind: 'group' })])
-    expect(backup.tags).toEqual([
+    const count = (table: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
+    expect(backup.people.length).toBe(count('people'))
+    expect(backup.scenes.length).toBe(count('scenes'))
+    expect(backup.tags.length).toBe(count('tags'))
+    expect(backup.scenes.filter((s: { id: number }) => s.id === scene)).toEqual([expect.objectContaining({ id: scene, title: 'Prom', kind: 'group' })])
+    expect(backup.tags.filter((t: { scene_id: number }) => t.scene_id === scene)).toEqual([
       expect.objectContaining({ scene_id: scene, person_id: owner, x: 1, y: 2, w: 3, h: 4 }),
       expect.objectContaining({ scene_id: scene, person_id: null }),
     ])
@@ -164,6 +183,7 @@ describe('credits', () => {
   const credits = async (cookie: string) => ((await (await app.request('/api/event', { headers: { Cookie: cookie } })).json()) as { credits: unknown }).credits
 
   it('saves the list and serves it with the event details', async () => {
+    await put(admin, { credits: [] })
     expect(await credits(member)).toEqual([])
     const res = await put(admin, { credits: [{ name: 'דנה', note: 'סרקה את ספר המחזור' }, { name: 'יוסי', note: '' }] })
     expect(res.status).toBe(200)
@@ -176,6 +196,7 @@ describe('credits', () => {
   })
 
   it('refuses a nameless row and anything too long', async () => {
+    await put(admin, { credits: [{ name: 'רק אני' }] })
     expect((await put(admin, { credits: [{ name: '  ' }] })).status).toBe(400)
     expect((await put(admin, { credits: [{ name: 'x'.repeat(61) }] })).status).toBe(400)
     expect((await put(admin, { credits: 'nope' })).status).toBe(400)
@@ -233,5 +254,78 @@ describe('CSV import', () => {
     // Case and spacing do not make it someone new.
     expect(await upload('name\n  maya KATZ \n')).toEqual({ added: 0, skipped: [expect.stringContaining('שורה 2')] })
     expect(count()).toBe(before)
+  })
+})
+
+describe('deleting a person', () => {
+  it('removes the profile with its photo files, notes and device keys, and leaves its faces unnamed', async () => {
+    const png = await sharp({ create: { width: 60, height: 60, channels: 3, background: '#ec4899' } }).png().toBuffer()
+    const id = insertPerson(db, { name: 'Jenny Carter', claimed_at: '2026-09-18T00:00:00Z' })
+    const photo = await addPhoto(db, dataDir, id, 'now', png)
+    const scene = Number(
+      db.prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path) VALUES ('reunion', 'Reunion', 'group', 600, 400, 'scenes/reunion')`).run().lastInsertRowid,
+    )
+    const face = insertTag(db, scene, { x: 1, y: 1, w: 10, h: 10 }, id)
+    db.prepare('INSERT INTO notes (recipient_id, message) VALUES (?, ?)').run(id, 'See you there')
+    db.prepare('INSERT INTO device_tokens (token_hash, person_id) VALUES (?, ?)').run('deleted-person-device', id)
+    const left = (table: string, column: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`).get(id) as { n: number }).n
+    expect(fs.existsSync(path.join(dataDir, photo.path))).toBe(true)
+
+    expect((await app.request(`/api/admin/people/${id}`, { method: 'DELETE', headers: { Cookie: member } })).status).toBe(403)
+    expect(getPerson(db, id)).toBeDefined()
+
+    const res = await app.request(`/api/admin/people/${id}`, { method: 'DELETE', headers: { Cookie: admin } })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true })
+    expect(getPerson(db, id)).toBeUndefined()
+    expect(fs.existsSync(path.join(dataDir, photo.path))).toBe(false)
+    expect([left('person_photos', 'person_id'), left('notes', 'recipient_id'), left('device_tokens', 'person_id')]).toEqual([0, 0, 0])
+    expect(db.prepare('SELECT person_id FROM tags WHERE id = ?').get(face)).toEqual({ person_id: null })
+
+    expect((await app.request(`/api/admin/people/${id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(404)
+  })
+})
+
+describe('deleting a class photo', () => {
+  it('removes the picture, its tiles and its face tags, and keeps the people', async () => {
+    const png = await sharp({ create: { width: 600, height: 400, channels: 3, background: '#14b8a6' } }).png().toBuffer()
+    const form = new FormData()
+    form.set('image', new File([new Uint8Array(png)], 'class.png', { type: 'image/png' }))
+    form.set('title', '1996 - graduation')
+    const uploaded = await app.request('/api/admin/scenes', { method: 'POST', headers: { Cookie: admin }, body: form })
+    expect(uploaded.status).toBe(201)
+    const { id } = await uploaded.json()
+    const tiles = path.join(dataDir, getScene(db, id)!.tiles_path)
+    expect(fs.existsSync(path.join(tiles, 'scene.dzi'))).toBe(true)
+    const person = insertPerson(db, { name: 'Jenny Carter' })
+    const face = insertTag(db, id, { x: 10, y: 10, w: 50, h: 60 }, person)
+
+    expect((await app.request(`/api/admin/scenes/${id}`, { method: 'DELETE', headers: { Cookie: member } })).status).toBe(403)
+    expect(getScene(db, id)).toBeDefined()
+
+    const res = await app.request(`/api/admin/scenes/${id}`, { method: 'DELETE', headers: { Cookie: admin } })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true })
+    expect(getScene(db, id)).toBeUndefined()
+    expect(fs.existsSync(tiles)).toBe(false)
+    expect(db.prepare('SELECT COUNT(*) AS n FROM tags WHERE id = ? OR scene_id = ?').get(face, id)).toEqual({ n: 0 })
+    expect(getPerson(db, person)).toBeDefined()
+
+    expect((await app.request(`/api/admin/scenes/${id}`, { method: 'DELETE', headers: { Cookie: admin } })).status).toBe(404)
+  })
+})
+
+describe('loading the demo data', () => {
+  it('refuses a site that already has people, with 409, and adds nothing', async () => {
+    insertPerson(db, { name: 'Jenny Carter' })
+    const count = (table: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
+    const files = (folder: string) => (fs.existsSync(path.join(dataDir, folder)) ? fs.readdirSync(path.join(dataDir, folder)).length : 0)
+    const snapshot = () => [count('people'), count('scenes'), count('tags'), count('person_photos'), files('uploads'), files('scenes')]
+    const before = snapshot()
+
+    const res = await app.request('/api/admin/demo', { method: 'POST', headers: { Cookie: admin } })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'אפשר לטעון נתוני הדגמה רק לאתר ריק, בלי אנשים ובלי תמונות מחזור' })
+    expect(snapshot()).toEqual(before)
   })
 })

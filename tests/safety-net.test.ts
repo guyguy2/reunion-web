@@ -265,9 +265,16 @@ describe('profile photo uploads', () => {
 
   it('refuses bytes that only claim to be an image', async () => {
     const { id, token } = await ownProfile(member, 'Riley Brooks')
-    const res = await upload(token, 'now', new File(['not really a png'], 'fake.png', { type: 'image/png' }))
-    expect(res.status).toBe(400)
-    expect(typeof (await res.json()).error).toBe('string')
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const res = await upload(token, 'now', new File(['not really a png'], 'fake.png', { type: 'image/png' }))
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'הקובץ אינו תמונה תקינה' })
+      // The image library's own message goes to the log, not to the classmate.
+      expect(logged).toHaveBeenCalledTimes(1)
+    } finally {
+      logged.mockRestore()
+    }
     expect(nowPhotos(id)).toBe(0)
   })
 
@@ -292,7 +299,9 @@ describe('profile photo uploads', () => {
     const anonymous = await upload(null, 'now', await realPng())
     expect(anonymous.status).toBe(403)
     expect(await anonymous.json()).toEqual({ error: 'קישור העריכה אינו תקף' })
-    expect((await upload(token, 'later', await realPng())).status).toBe(400)
+    const unknownKind = await upload(token, 'later', await realPng())
+    expect(unknownKind.status).toBe(400)
+    expect(await unknownKind.json()).toEqual({ error: 'סוג תמונה לא מוכר' })
   })
 })
 
