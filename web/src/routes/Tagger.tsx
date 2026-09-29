@@ -42,8 +42,9 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
   const tags = useRef(scene.tags)
   // The box just drawn, to be selected again once the reload has put it back on the canvas.
   const drawn = useRef<number | null>(null)
-  // The save a box change started, so leaving can wait for it.
+  // The save a box change started, so leaving can wait for it. It goes back to a resolved promise once it has settled.
   const saving = useRef<Promise<unknown>>(Promise.resolve())
+  const finishing = useRef(false)
   const [drawing, setDrawing] = useState(false)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [query, setQuery] = useState('')
@@ -108,7 +109,11 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
     annotator.on('updateAnnotation', (annotation) => {
       // A box still being created has no server id yet; the reload after creating it redraws it.
       if (!owners.current.has(annotation.id)) return
-      saving.current = act(() => api(`/api/admin/tags/${annotation.id}`, { method: 'PATCH', json: boxOf(annotation as ImageAnnotation) }), rollback)
+      const save = act(() => api(`/api/admin/tags/${annotation.id}`, { method: 'PATCH', json: boxOf(annotation as ImageAnnotation) }), rollback)
+      saving.current = save
+      save.then(() => {
+        if (saving.current === save) saving.current = Promise.resolve()
+      })
     })
     annotator.on('selectionChanged', (annotations) => {
       const id = Number(annotations[0]?.id)
@@ -154,11 +159,14 @@ export default function Tagger({ scene: memberScene, onClose }: { scene: Scene; 
 
   // A moved box is only saved once it is deselected, so deselect, wait for that save, and stay if it failed.
   async function finish() {
-    saving.current = Promise.resolve()
+    if (finishing.current) return
+    finishing.current = true
     anno.current?.cancelSelected()
-    // Annotorious reports the change after a 1 ms timer; this one is queued behind it.
+    // @annotorious/openseadragon 3.8.10 reports the change from a 1 ms timer set inside cancelSelected(); this one is
+    // queued behind it. If an upgrade changes that, the move is lost again (the Done tests in e2e/admin.spec.ts catch it).
     await new Promise((resolve) => setTimeout(resolve, 1))
-    if ((await saving.current) !== 'not-saved') onClose()
+    if ((await saving.current) === 'not-saved') finishing.current = false
+    else onClose()
   }
 
   function retryReload() {

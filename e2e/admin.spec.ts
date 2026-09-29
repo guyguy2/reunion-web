@@ -610,6 +610,32 @@ test.describe.serial('a group photo from upload to delete', () => {
     await page.request.delete(`/api/admin/tags/${drawn.id}`)
   })
 
+  test('Done waits for a save that is already running, and stays open with the error when it fails', async ({ page }) => {
+    const { drawn, movedX } = await dragNewBox(page)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    await page.route(`**/api/admin/tags/${drawn.id}`, async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback()
+      await gate
+      await route.fulfill({ status: 500, json: { error: 'השמירה נכשלה' } })
+    })
+    // Clicking the picture outside the box starts the save; Done is clicked while it is still on its way.
+    const { awayX, awayY } = await canvasCenter(page)
+    await page.mouse.click(awayX, awayY)
+    await page.getByRole('button', { name: 'סיום' }).click()
+    release()
+    await expect(page.getByText('השמירה נכשלה')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'זיהוי פנים אוטומטי' })).toBeVisible()
+    expect(await movedX()).toBe(drawn.x)
+
+    // The failed move was taken back, so a second Done has nothing left to save and closes.
+    await page.unroute(`**/api/admin/tags/${drawn.id}`)
+    await page.getByRole('button', { name: 'סיום' }).click()
+    await expect(page.getByRole('button', { name: 'זיהוי פנים אוטומטי' })).toHaveCount(0)
+    expect(await movedX()).toBe(drawn.x)
+    await page.request.delete(`/api/admin/tags/${drawn.id}`)
+  })
+
   test('the wall is rebuilt from the profiles', async ({ page }) => {
     await login(page, 'admin')
     const wall = async () => (await getScenes(page)).filter((s) => s.kind === 'mosaic')
