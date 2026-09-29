@@ -70,7 +70,9 @@ function Version() {
   const [version, setVersion] = useState<string | null>(null)
 
   useEffect(() => {
-    api<{ version: string | null }>('/api/admin/version').then((v) => setVersion(v.version ?? 'גרסה מקומית'))
+    api<{ version: string | null }>('/api/admin/version')
+      .then((v) => setVersion(v.version ?? 'גרסה מקומית'))
+      .catch(() => setVersion('הגרסה לא נטענה'))
   }, [])
 
   return (
@@ -83,7 +85,11 @@ function Version() {
 /** Everything sent through the feedback button, newest first. Also emailed when email is set up. */
 function FeedbackInbox() {
   const [messages, setMessages] = useState<FeedbackMessage[] | null>(null)
-  const load = () => api<FeedbackMessage[]>('/api/admin/feedback').then(setMessages)
+  const [error, setError] = useState('')
+  const load = () =>
+    api<FeedbackMessage[]>('/api/admin/feedback')
+      .then((m) => (setMessages(m), setError('')))
+      .catch(() => setError('לא הצלחנו לטעון את המשוב.'))
 
   useEffect(() => {
     load()
@@ -91,6 +97,7 @@ function FeedbackInbox() {
 
   return (
     <Section title={`משוב (${messages?.length ?? 0})`} id="feedback">
+      {error && <p className="font-bold text-pink">{error}</p>}
       <ul className="max-h-96 space-y-2 overflow-y-auto">
         {messages?.map((m) => (
           <li key={m.id} className="space-y-1 rounded-lg border-[3px] border-ink p-3">
@@ -102,7 +109,15 @@ function FeedbackInbox() {
                 {m.sender ?? 'ללא שם'}, {m.createdAt}
                 {m.emailed ? '' : ' (לא נשלח במייל)'}
               </span>
-              <ConfirmButton label="מחיקה" confirmLabel="למחוק" onConfirm={() => api(`/api/admin/feedback/${m.id}`, { method: 'DELETE' }).then(load)} />
+              <ConfirmButton
+                label="מחיקה"
+                confirmLabel="למחוק"
+                onConfirm={() =>
+                  api(`/api/admin/feedback/${m.id}`, { method: 'DELETE' })
+                    .then(load)
+                    .catch(() => setError('המחיקה נכשלה. נסו שוב.'))
+                }
+              />
             </div>
           </li>
         ))}
@@ -232,15 +247,18 @@ type ListId = 'attending' | 'claimed' | 'pin' | 'photo' | 'faces'
 function Overview({ onTab }: { onTab: (tab: TabId) => void }) {
   const { people } = useStore()
   const [stats, setStats] = useState<Stats | null>(null)
+  const [error, setError] = useState('')
   const [list, setList] = useState<ListId | null>(null)
   const toggle = (id: ListId) => ({ open: list === id, onClick: () => setList(list === id ? null : id) })
   const owners = people.filter((p) => p.claimed)
 
   useEffect(() => {
-    api<Stats>('/api/admin/stats').then(setStats)
+    api<Stats>('/api/admin/stats')
+      .then(setStats)
+      .catch(() => setError('לא הצלחנו לטעון את הסקירה. נסו לרענן את הדף.'))
   }, [])
 
-  if (!stats) return <p className="pixel text-xl">טוען...</p>
+  if (!stats) return error ? <p className="font-bold text-pink">{error}</p> : <p className="pixel text-xl">טוען...</p>
   const pct = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 100)}%` : '0%')
   return (
     <Section title="סקירה">
@@ -500,7 +518,7 @@ export default function Admin() {
               </label>
               <input id="people-add" className="field" dir="auto" placeholder="שם מלא" value={newName} onChange={(e) => setNewName(e.target.value)} />
             </div>
-            <button className="btn shrink-0" disabled={newName.trim().length < 2}>
+            <button className="btn shrink-0" disabled={newName.trim().length < 2 || busy === 'person'}>
               הוספה
             </button>
           </form>
@@ -526,7 +544,7 @@ export default function Admin() {
               <textarea className="field pixel min-h-32 text-lg" dir="auto" value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={'name,former_name,city\n...'} />
               <button
                 className="btn btn-sm"
-                disabled={!csv.trim()}
+                disabled={!csv.trim() || busy === 'csv'}
                 onClick={() =>
                   run('csv', async () => {
                     const result = await api<{ added: number; skipped: string[] }>('/api/admin/import-csv', { body: csv })
@@ -535,7 +553,7 @@ export default function Admin() {
                   })
                 }
               >
-                ייבוא
+                {busy === 'csv' ? 'מייבאים...' : 'ייבוא'}
               </button>
             </div>
           </details>
