@@ -207,6 +207,20 @@ describe('merging and marking staff', () => {
   })
 })
 
+describe('the primary photo after a merge', () => {
+  it('points the kept profile at the oldest photo of each kind', async () => {
+    const into = insertPerson(db, { name: 'Dana Ellis' })
+    const from = insertPerson(db, { name: 'ד. אליס' })
+    const intoNow = await addPhoto(db, dataDir, into, 'now', await picture())
+    const fromThen = await addPhoto(db, dataDir, from, 'then', await picture())
+    await addPhoto(db, dataDir, from, 'now', await picture())
+    const res = await app.request(`/api/admin/people/${from}/merge`, json('POST', { intoId: into }, { Cookie: admin }))
+    expect(res.status).toBe(200)
+    expect(getPerson(db, into)).toMatchObject({ then_photo: fromThen.path, now_photo: intoNow.path })
+    expect(listPhotos(db, into, 'now')).toHaveLength(2)
+  })
+})
+
 describe('rebuilding the wall', () => {
   it('answers a failure with a Hebrew 500 and logs it', async () => {
     // A data folder that is really a file: the wall's tiles cannot be written.
@@ -252,6 +266,24 @@ describe('backup export', () => {
     expect(backup.videos).toContainEqual(expect.objectContaining({ provider: 'youtube', external_id: 'bkpClip0001', title: 'Backup clip' }))
     expect(backup.credits).toEqual([{ name: 'Jenny Carter', note: 'Scanned the yearbook' }])
     for (const table of ['person_photos', 'quotes', 'quote_comments', 'quote_reactions', 'tapes', 'videos']) expect(backup[table]).toHaveLength(count(table))
+  })
+})
+
+describe('quote reactions', () => {
+  it('counts each quote on its own', () => {
+    const first = Number(db.prepare(`INSERT INTO quotes (text) VALUES ('Quiet, please')`).run().lastInsertRowid)
+    const second = Number(db.prepare(`INSERT INTO quotes (text) VALUES ('Pens down')`).run().lastInsertRowid)
+    const quiet = Number(db.prepare(`INSERT INTO quotes (text) VALUES ('Nobody reacted to this one')`).run().lastInsertRowid)
+    reactToQuote(db, first, 'reactor-a', { emoji: REACTIONS[0] })
+    reactToQuote(db, first, 'reactor-b', { emoji: REACTIONS[0] })
+    reactToQuote(db, first, 'reactor-c', { emoji: REACTIONS[1] })
+    reactToQuote(db, second, 'reactor-a', { emoji: REACTIONS[1] })
+
+    const quotes = listQuotes(db, 'reactor-a')
+    const byId = (id: number) => quotes.find((q) => q.id === id)!
+    expect(byId(first)).toMatchObject({ reactions: [{ emoji: REACTIONS[0], count: 2 }, { emoji: REACTIONS[1], count: 1 }], myReaction: REACTIONS[0] })
+    expect(byId(second)).toMatchObject({ reactions: [{ emoji: REACTIONS[1], count: 1 }], myReaction: REACTIONS[1] })
+    expect(byId(quiet)).toMatchObject({ reactions: [], myReaction: null })
   })
 })
 

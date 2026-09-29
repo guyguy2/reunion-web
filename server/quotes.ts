@@ -52,7 +52,9 @@ export function listQuotes(db: Db, reactor: string | null = null) {
   const reactions = db.prepare('SELECT * FROM quote_reactions').all() as unknown as ReactionRow[]
   const byQuote = new Map<number, QuoteCommentRow[]>()
   for (const c of comments) byQuote.set(c.quote_id, [...(byQuote.get(c.quote_id) ?? []), c])
-  return quotes.map((q) => serializeQuote(q, byQuote.get(q.id), reactions.filter((r) => r.quote_id === q.id), reactor))
+  const reactionsByQuote = new Map<number, ReactionRow[]>()
+  for (const r of reactions) reactionsByQuote.set(r.quote_id, [...(reactionsByQuote.get(r.quote_id) ?? []), r])
+  return quotes.map((q) => serializeQuote(q, byQuote.get(q.id), reactionsByQuote.get(q.id), reactor))
 }
 
 /**

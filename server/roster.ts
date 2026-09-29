@@ -1,6 +1,6 @@
 import type { Db, PersonRow, SceneRow, TagRow } from './db.ts'
 import { removeUpload } from './images.ts'
-import { getPerson, insertPerson, listPhotos, MAX_PHOTOS_PER_KIND, updatePerson } from './people.ts'
+import { getPerson, insertPerson, listPhotos, MAX_PHOTOS_PER_KIND, syncPrimary, updatePerson } from './people.ts'
 
 /**
  * The names, classes and genders worked out for the class photos, as one file. It is how a roster that was
@@ -227,9 +227,7 @@ export function mergePeople(db: Db, dataDir: string, from: PersonRow, into: Pers
         } else dropped.push(photo.path)
       }
       // The mirror people.ts keeps for the portrait wall: the oldest photo of each kind.
-      const column = kind === 'then' ? 'then_photo' : 'now_photo'
-      db.prepare(`UPDATE people SET ${column} = (SELECT path FROM person_photos WHERE person_id = ? AND kind = ? ORDER BY id LIMIT 1) WHERE id = ?`)
-        .run(into.id, kind, into.id)
+      syncPrimary(db, into.id, kind)
     }
     db.prepare('DELETE FROM people WHERE id = ?').run(from.id)
     db.exec('COMMIT')

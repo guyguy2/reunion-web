@@ -170,9 +170,10 @@ export function listPhotos(db: Db, personId: number, kind?: PhotoKind): PersonPh
 
 /**
  * person_photos is the source of truth; people.then_photo / people.now_photo mirror the oldest photo of
- * each kind for the portrait wall (images.ts, scenes.ts). Only addPhoto and deletePhoto write either one.
+ * each kind for the portrait wall (images.ts, scenes.ts). Only addPhoto, deletePhoto and mergePeople (roster.ts)
+ * write either one, all through here.
  */
-function syncPrimary(db: Db, personId: number, kind: PhotoKind) {
+export function syncPrimary(db: Db, personId: number, kind: PhotoKind) {
   const column = kind === 'then' ? 'then_photo' : 'now_photo'
   db.prepare(`UPDATE people SET ${column} = (SELECT path FROM person_photos WHERE person_id = ? AND kind = ? ORDER BY id LIMIT 1) WHERE id = ?`)
     .run(personId, kind, personId)
