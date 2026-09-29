@@ -123,11 +123,12 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
     const body = await readJson(c)
     const role = typeof body.passcode === 'string' ? roleForPasscode(config, body.passcode) : null
     const adminBlocked = limiter.blocked(adminKey)
-    // While admin guesses are blocked, the admin passcode gets the same answer as a wrong one, so it cannot be confirmed.
+    // While admin guesses are blocked, the admin passcode gets the same ordinary answer as a wrong one, so it cannot be
+    // confirmed, and a guest whose typos filled the admin count is not told to wait.
     if (!role || (role === 'admin' && adminBlocked)) {
       limiter.fail(classKey)
       if (!adminBlocked) limiter.fail(adminKey)
-      return adminBlocked ? c.json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.' }, 429) : c.json({ error: 'סיסמה שגויה' }, 401)
+      return c.json({ error: 'סיסמה שגויה' }, 401)
     }
     limiter.clear(classKey)
     if (role === 'admin') limiter.clear(adminKey)
@@ -137,7 +138,8 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   })
 
   app.post('/api/logout', (c) => {
-    // Also retires this device's key, so a copy of it left on the device stops working.
+    // Also retires the device key it was sent with, so a copy left on the device stops working. Only device keys:
+    // the owner's edit token from claiming the profile is not one, and stays valid.
     const token = c.req.header('x-edit-token')
     if (token) db.prepare('DELETE FROM device_tokens WHERE token_hash = ?').run(sha256(token))
     endSession(c)
@@ -149,7 +151,9 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   app.use('/media/*', requireSession(config))
   app.use('/api/*', (c, next) => {
     const limit = largeBodyLimit(c)
-    return limit ? limit(c, next) : next()
+    if (!limit) return next()
+    // The organizer paths get their larger limit only for organizers, so a classmate cannot make the server hold a big body.
+    return c.req.path.startsWith('/api/admin/') && c.get('role') !== 'admin' ? smallBody(c, next) : limit(c, next)
   })
 
   app.get('/media/*', (c) => {

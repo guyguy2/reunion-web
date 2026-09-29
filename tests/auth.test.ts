@@ -92,14 +92,22 @@ describe('login limiter', () => {
     for (let i = 0; i < 9; i++) expect((await attempt(`admin-guess-${i}`, ip)).status).toBe(401)
     expect((await attempt('class-pass', ip)).status).toBe(200)
     expect((await attempt('admin-guess-9', ip)).status).toBe(401)
-    expect((await attempt('admin-guess-10', ip)).status).toBe(429)
 
     const blockedAdmin = await attempt('admin-pass', ip)
-    expect(blockedAdmin.status).toBe(429)
+    expect(blockedAdmin.status).toBe(401)
     expect(blockedAdmin.headers.get('set-cookie')).toBeNull()
 
-    // Guests share the venue wifi: admin guesses alone do not lock classmates out.
+    // Guests share the venue wifi. The class count is still under the limit here (the class login above cleared it),
+    // so classmates still get in. Ten wrong guesses in a row would lock the class passcode too.
     expect((await attempt('class-pass', ip)).status).toBe(200)
+    // That class login cleared only the class count: the admin passcode is still not accepted.
+    const stillBlocked = await attempt('admin-pass', ip)
+    expect(stillBlocked.status).toBe(401)
+    expect(stillBlocked.headers.get('set-cookie')).toBeNull()
+
+    // Every refused attempt counts against the class passcode, so the guessing still ends: 1 + 9 reach the limit.
+    for (let i = 0; i < 9; i++) expect((await attempt(`admin-guess-${11 + i}`, ip)).status).toBe(401)
+    expect((await attempt('admin-guess-20', ip)).status).toBe(429)
   })
 
   it('answers the right admin passcode exactly like a wrong one while admin guesses are blocked', async () => {
@@ -110,12 +118,14 @@ describe('login limiter', () => {
 
     const wrong = await attempt('admin-guess-10', ip)
     const right = await attempt('admin-pass', ip)
-    expect(right.status).toBe(wrong.status)
+    expect(wrong.status).toBe(401)
+    expect(right.status).toBe(401)
     expect(await right.json()).toEqual(await wrong.json())
+    expect(wrong.headers.get('set-cookie')).toBeNull()
     expect(right.headers.get('set-cookie')).toBeNull()
 
     // Both count as failed class logins too: 1 + 2 so far, 7 more reach the limit either way.
-    for (let i = 0; i < 7; i++) expect((await attempt('admin-pass', ip)).status).toBe(429)
+    for (let i = 0; i < 7; i++) expect((await attempt('admin-pass', ip)).status).toBe(401)
     expect((await attempt('class-pass', ip)).status).toBe(429)
   })
 
@@ -155,6 +165,15 @@ describe('body size limits', () => {
     expect(res.headers.get('set-cookie')).toBeNull()
   })
 
+  it('refuses an oversized login body by its Content-Length header alone', async () => {
+    const body = JSON.stringify({ passcode: 'class-pass', pad: 'x'.repeat(70 * 1024) })
+    const headers = { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(body)), 'x-real-ip': freshIp() }
+    const res = await app.request('/api/login', { method: 'POST', headers, body })
+    expect(res.status).toBe(413)
+    expect((await res.json()).error).toMatch(HEBREW)
+    expect(res.headers.get('set-cookie')).toBeNull()
+  })
+
   it('refuses an oversized JSON body on other API routes too', async () => {
     const res = await app.request('/api/tapes', json('POST', { url: 'x'.repeat(70 * 1024) }, { Cookie: member }))
     expect(res.status).toBe(413)
@@ -176,6 +195,17 @@ describe('body size limits', () => {
     const huge = await app.request('/api/me/photo/now', { method: 'POST', headers, body: upload('photo', new Uint8Array(MAX_UPLOAD_BYTES + MB + 1)) })
     expect(huge.status).toBe(413)
     expect((await huge.json()).error).toMatch(HEBREW)
+  })
+
+  it('gives the organizer upload limits to organizers only', async () => {
+    const image = await noisyPng(280, 280)
+    expect(image.length).toBeGreaterThan(200 * 1024)
+    const asMember = await app.request('/api/admin/scenes', { method: 'POST', headers: { Cookie: member }, body: upload('image', image, { title: 'Not Mine' }) })
+    expect(asMember.status).toBe(413)
+    expect((await asMember.json()).error).toMatch(HEBREW)
+
+    const asAdmin = await app.request('/api/admin/scenes', { method: 'POST', headers: { Cookie: admin }, body: upload('image', image, { title: 'Mine' }) })
+    expect(asAdmin.status).toBe(201)
   })
 
   it('keeps the larger limits on the organizer uploads and imports', async () => {
