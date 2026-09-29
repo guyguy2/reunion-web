@@ -6,7 +6,7 @@ import { MAX_SCENE_BYTES, MAX_UPLOAD_BYTES, readImageField } from './images.ts'
 import { addPhoto, deletePhoto, deletePhotos, getPerson, insertPerson, parseCsv, parsePersonInput, serializePerson, updatePerson } from './people.ts'
 import { addGroupScene, deleteScene, getScene, insertTag, listScenes, rebuildWall, serializeTag } from './scenes.ts'
 import { saveCredits } from './credits.ts'
-import { loadDemoData } from './demo.ts'
+import { loadDemoData, SiteNotEmptyError } from './demo.ts'
 import { listFeedback } from './feedback.ts'
 import { readJson } from './http.ts'
 import { exportRoster, importRoster, markPersonStaff, mergePeople, parseRoster } from './roster.ts'
@@ -237,7 +237,12 @@ export function adminRoutes(config: Config, db: Db) {
   })
 
   admin.post('/rebuild-wall', async (c) => {
-    await rebuildWall(db, config.dataDir)
+    try {
+      await rebuildWall(db, config.dataDir)
+    } catch (err) {
+      console.error('Rebuilding the wall failed:', (err as Error).message)
+      return c.json({ error: 'לא הצלחנו לבנות את הקיר מחדש' }, 500)
+    }
     return c.json(listScenes(db))
   })
 
@@ -344,9 +349,12 @@ export function adminRoutes(config: Config, db: Db) {
 
   // ---- Demo data: only into an empty site ----
   admin.post('/demo', async (c) => {
-    const { n } = db.prepare('SELECT COUNT(*) AS n FROM people').get() as { n: number }
-    if (n > 0) return c.json({ error: 'Demo data can only be loaded into an empty site' }, 409)
-    await loadDemoData(db, config.dataDir)
+    try {
+      await loadDemoData(db, config.dataDir)
+    } catch (err) {
+      if (err instanceof SiteNotEmptyError) return c.json({ error: err.message }, 409)
+      throw err
+    }
     return c.json({ ok: true })
   })
 

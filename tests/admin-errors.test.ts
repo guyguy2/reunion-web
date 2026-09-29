@@ -129,6 +129,47 @@ describe('admin JSON bodies that are null or a list', () => {
   })
 })
 
+describe('loading the demo data', () => {
+  const NOT_EMPTY = 'אפשר לטעון נתוני הדגמה רק לאתר ריק, בלי אנשים ובלי תמונות מחזור'
+
+  async function freshSite() {
+    const dir = tempDir()
+    const siteDb = openDb(dir)
+    const site = createApp({ ...config, dataDir: dir }, siteDb)
+    return { db: siteDb, site, cookie: await login('admin-pass', '10.61.1.1', site) }
+  }
+
+  it('answers 409 with the reason when the site has a class photo but no people', async () => {
+    const { db: siteDb, site, cookie } = await freshSite()
+    siteDb.prepare(`INSERT INTO scenes (slug, title, kind, width, height, tiles_path) VALUES ('prom', 'Prom', 'group', 600, 400, 'scenes/prom')`).run()
+    const res = await site.request('/api/admin/demo', { method: 'POST', headers: { Cookie: cookie } })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: NOT_EMPTY })
+  })
+
+  it('answers 409 with the same reason when the site has people', async () => {
+    const { db: siteDb, site, cookie } = await freshSite()
+    insertPerson(siteDb, { name: 'Jenny Carter' })
+    const res = await site.request('/api/admin/demo', { method: 'POST', headers: { Cookie: cookie } })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: NOT_EMPTY })
+  })
+
+  it('still answers 500 for any other failure', async () => {
+    const { db: siteDb, site, cookie } = await freshSite()
+    siteDb.exec(`CREATE TRIGGER no_people BEFORE INSERT ON people BEGIN SELECT RAISE(ABORT, 'disk on fire'); END`)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const res = await site.request('/api/admin/demo', { method: 'POST', headers: { Cookie: cookie } })
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: 'משהו השתבש' })
+      expect(logged).toHaveBeenCalled()
+    } finally {
+      logged.mockRestore()
+    }
+  })
+})
+
 describe('merging and marking staff', () => {
   it('refuses to merge a profile into itself, in Hebrew', async () => {
     const id = insertPerson(db, { name: 'Casey Morgan' })
@@ -163,5 +204,28 @@ describe('merging and marking staff', () => {
     expect(missingStaff.status).toBe(404)
     expect(await missingStaff.json()).toEqual({ error: 'Not found' })
     expect(getPerson(db, id)).toBeDefined()
+  })
+})
+
+describe('rebuilding the wall', () => {
+  it('answers a failure with a Hebrew 500 and logs it', async () => {
+    // A data folder that is really a file: the wall's tiles cannot be written.
+    const dir = tempDir()
+    const blocked = path.join(dir, 'not-a-folder')
+    fs.writeFileSync(blocked, '')
+    const siteDb = openDb(dir)
+    insertPerson(siteDb, { name: 'Jenny Carter' })
+    const site = createApp({ ...config, dataDir: blocked }, siteDb)
+    const cookie = await login('admin-pass', '10.61.2.1', site)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const res = await site.request('/api/admin/rebuild-wall', { method: 'POST', headers: { Cookie: cookie } })
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: 'לא הצלחנו לבנות את הקיר מחדש' })
+      expect(logged).toHaveBeenCalled()
+    } finally {
+      logged.mockRestore()
+    }
+    expect(siteDb.prepare(`SELECT COUNT(*) AS n FROM scenes WHERE kind = 'mosaic'`).get()).toEqual({ n: 0 })
   })
 })
