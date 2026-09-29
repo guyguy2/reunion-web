@@ -151,11 +151,11 @@ describe('feedback throttle', () => {
     target.request('/api/feedback', json('POST', { message: 'The mixtape skips' }, { Cookie: member, 'x-real-ip': ip }))
   const saved = () => (db.prepare('SELECT COUNT(*) AS n FROM feedback').get() as { n: number }).n
 
-  it('takes three messages per address in ten minutes', async () => {
+  it('takes ten messages per address in ten minutes', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     const fresh = createApp(config, db)
     const ip = freshIp()
-    for (let i = 0; i < 3; i++) expect((await post(fresh, ip)).status).toBe(201)
+    for (let i = 0; i < 10; i++) expect((await post(fresh, ip)).status).toBe(201)
     const before = saved()
     const refused = await post(fresh, ip)
     expect(refused.status).toBe(429)
@@ -181,12 +181,13 @@ describe('sign-in link throttle', () => {
     target.request(`/api/people/${personId}/signin-link`, { method: 'POST', headers: { Cookie: member, 'x-real-ip': ip } })
   const claimed = (name: string, email: string | null) => insertPerson(db, { name, email, claimed_at: 'now' })
 
-  it('takes three requests per address in ten minutes, and answers the same whether or not the profile has an email', async () => {
+  it('takes ten requests per address in ten minutes, and answers the same whether or not the profile has an email', async () => {
     const { app: fresh, outbox } = mailApp()
     const withEmail = claimed('Jenny Carter', 'jenny@example.test')
     const noEmail = claimed('Casey Morgan', null)
     const ip = freshIp()
-    for (let i = 0; i < 3; i++) expect((await link(fresh, noEmail, ip)).status).toBe(400)
+    // Spread over profiles that do not exist, so no one profile reaches its own limit.
+    for (let i = 0; i < 10; i++) expect((await link(fresh, 800_000 + i, ip)).status).toBe(404)
 
     const toEmail = await link(fresh, withEmail, ip)
     const toNoEmail = await link(fresh, noEmail, ip)
@@ -220,12 +221,13 @@ describe('sign-in link throttle', () => {
     expect(await refused.json()).toEqual(TOO_MANY_REQUESTS)
   })
 
-  it('clears the count for the address once a link from it is used', async () => {
+  it('clears the count for the address once a link is used from it', async () => {
     const { app: fresh, outbox } = mailApp()
     const target = claimed('Dana Ellis', 'dana@example.test')
+    // Asked for on one device, opened on another.
+    expect((await link(fresh, target, freshIp())).status).toBe(200)
     const ip = freshIp()
-    expect((await link(fresh, target, ip)).status).toBe(200)
-    for (let i = 0; i < 2; i++) expect((await link(fresh, target, ip)).status).toBe(400)
+    for (let i = 0; i < 10; i++) expect((await link(fresh, 810_000 + i, ip)).status).toBe(404)
     expect((await link(fresh, target, ip)).status).toBe(429)
 
     const token = outbox[0].text.match(/signin\/(\S+)/)![1]

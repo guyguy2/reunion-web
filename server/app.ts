@@ -107,10 +107,11 @@ export function createApp(config: Config, db: Db = openDb(config.dataDir), maile
   const app = new Hono<AppEnv>()
   const limiter = createLoginLimiter()
   const pinLockout = createLockout()
-  // Feedback and sign-in links send email, so each is limited per address and for everyone together.
-  const feedbackPerClient = createThrottle({ max: 3, windowMs: 10 * MINUTE })
+  // Feedback and sign-in links send email, so each is limited per address and for everyone together. The per-address
+  // limits leave room for a group sharing one address, such as guests on the venue wifi.
+  const feedbackPerClient = createThrottle({ max: 10, windowMs: 10 * MINUTE })
   const feedbackPerDay = createThrottle({ max: 50, windowMs: DAY })
-  const linksPerClient = createThrottle({ max: 3, windowMs: 10 * MINUTE })
+  const linksPerClient = createThrottle({ max: 10, windowMs: 10 * MINUTE })
   const linksPerPerson = createThrottle({ max: 5, windowMs: DAY, globalMax: 100 })
 
   app.use('*', async (c, next) => {
